@@ -329,6 +329,10 @@ Les notebooks suivants sont disponibles dans le depot CoursIA ([jsboige/CoursIA]
 | [S2](#s2--ontologies-financieres-et-web-semantique-pour-le-screening-dactifs) | Ontologies financieres et Web Semantique pour le screening d'actifs | 3/5 |
 | [S3](#s3--verification-formelle-de-protocoles-defi-par-smt) | Verification formelle de protocoles DeFi par SMT | 4/5 |
 | [S4](#s4--programmation-probabiliste-symbolique-pour-la-detection-de-regimes-de-marche) | Programmation probabiliste symbolique pour la detection de regimes de marche | 3/5 |
+| [S5](#s5--enumeration-asp-des-strategies-doptions-multi-jambes-et-backtest-quantconnect) | Enumeration ASP des strategies d'options multi-jambes et backtest QuantConnect | 4/5 |
+| [S6](#s6--safe-rl-shielding-smt-des-politiques-de-trading-rl-et-deployment-quantconnect-live) | Safe RL : shielding SMT des politiques de trading RL et deployment QuantConnect Live | 5/5 |
+| [S7](#s7--fusion-de-signaux-multi-strategie-par-argumentation-dung-sur-le-research-executor-quantconnect) | Fusion de signaux multi-strategie par argumentation Dung sur le Research-Executor QuantConnect | 4/5 |
+| [S8](#s8--model-checking-ctl-dun-trading-bot-avant-deployment-live-quantconnect) | Model checking CTL d'un trading bot avant deployment live QuantConnect | 4/5 |
 
 ### Categorie T : Sciences Sociales Computationnelles et Choix Collectif
 
@@ -3096,6 +3100,138 @@ La detection de regimes de marche (bull, bear, range, crash) est un probleme cla
 - Ghahramani, Z. (2015). "Probabilistic Machine Learning and Artificial Intelligence." *Nature*, 521, 452-459. [Nature](https://doi.org/10.1038/nature14541)
 
 ### Difficulte : 3/5
+
+---
+
+#### S5 — Enumeration ASP des strategies d'options multi-jambes et backtest QuantConnect
+
+Les strategies d'options multi-jambes (straddles, strangles, butterflies, iron condors, calendar spreads, ratio spreads) forment un espace combinatoire enorme : sur un sous-jacent donne avec N strikes et M expirations, il existe O((N×M)^k) combinaisons a k jambes. La selection sous contraintes (delta-neutralite, vega-positivite, theta cible, marge initiale bornee, capital deploye, asymetrie risk-reward) est un probleme d'enumeration symbolique mieux capture par Answer Set Programming (ASP) que par des solveurs CP-SAT/MIP classiques : ASP exprime naturellement les regles de choix (`{ leg(strike, exp, side) : strike ∈ Strikes, ... } = k`), les contraintes structurelles (`:- delta_total(D), |D| > 0.05`), et le raisonnement non-monotone (defaut : strategy is balanced unless evidence shows otherwise). Ce sujet demande de modeliser l'espace combinatoire des strategies en ASP/Clingo, d'enumerer les strategies admissibles sous contraintes de risque, puis de les backtester systematiquement via QuantConnect Lean pour comparer la realisation effective des proprietes symboliquement attendues.
+
+### Objectifs
+- Modeliser en ASP/Clingo la grammaire des strategies multi-jambes : choix de strikes/expirations, sides (long/short), nombre de contrats, avec contraintes structurelles (delta target, vega/theta limites, margin, max loss)
+- Enumerer les solutions admissibles via `clingo --models=0` pour un univers d'options donne (ex: SPX hebdomadaire ou QQQ mensuel) sur differents regimes de volatilite
+- Implementer le pont vers QuantConnect Lean : chaque strategy ASP enumeree est traduite en ordres multi-jambes via le framework `OptionStrategies` de QuantConnect (notebook QC-Py-06)
+- Backtester systematiquement les top-K strategies enumerees (cycle d'entree/sortie hebdomadaire ou base sur signal de volatilite), avec rapport de performance (Sharpe, max DD, win rate, P&L net) et reconciliation des proprietes symboliques (delta reel vs cible)
+- Comparer la performance de l'enumeration ASP filtree par contraintes vs un baseline aleatoire et vs une heuristique classique (e.g. iron condor 16-delta)
+
+### Notebooks CoursIA pertinents
+
+| Notebook | Chemin | Pertinence |
+|----------|--------|------------|
+| Tweety/Tweety-7 ASP | [SymbolicAI/Tweety/Tweety-7-ASP-Clingo.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/SymbolicAI/Tweety/Tweety-7-ASP-Clingo.ipynb) | ASP/Clingo, regles de choix, contraintes |
+| QC-Py-06 Options Trading | [QuantConnect/Python/QC-Py-06-Options-Trading.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-06-Options-Trading.ipynb) | Framework Options, multi-jambes, grecs |
+| QC-Py-12 Backtesting Analysis | [QuantConnect/Python/QC-Py-12-Backtesting-Analysis.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-12-Backtesting-Analysis.ipynb) | Metriques de performance, analyse statistique |
+| OptionsIncome project | [QuantConnect/projects/OptionsIncome/](https://github.com/jsboige/CoursIA/tree/main/MyIA.AI.Notebooks/QuantConnect/projects/OptionsIncome) | Strategies d'options revenu (template projet) |
+| Options-VGT project | [QuantConnect/projects/Options-VGT/](https://github.com/jsboige/CoursIA/tree/main/MyIA.AI.Notebooks/QuantConnect/projects/Options-VGT) | Iron condors / strangles sur ETF |
+
+### References externes
+- Gebser, M., Kaminski, R., Kaufmann, B. & Schaub, T. (2019). "Multi-shot ASP solving with clingo." *Theory and Practice of Logic Programming*, 19(1), 27-82. [Cambridge](https://doi.org/10.1017/S1471068418000054)
+- Hull, J.C. (2022). *Options, Futures, and Other Derivatives* (11th ed.). Pearson. [Pearson](https://www.pearson.com/en-us/subject-catalog/p/options-futures-and-other-derivatives/P200000005945)
+- Natenberg, S. (2014). *Option Volatility and Pricing* (2nd ed.). McGraw-Hill. [McGraw-Hill](https://www.mhprofessional.com/9780071818773-usa-option-volatility-and-pricing-second-edition-advanced-trading-strategies-and-techniques)
+- Brignole, F. et al. (2023). "Constraint-based portfolio of derivative strategies." *Journal of Computational Finance*, 27(2). [Risk.net](https://www.risk.net/journal-of-computational-finance)
+- QuantConnect Documentation. "Option Strategies API." [quantconnect.com](https://www.quantconnect.com/docs/v2/writing-algorithms/trading-and-orders/option-strategies)
+
+### Difficulte : 4/5
+
+---
+
+#### S6 — Safe RL : shielding SMT des politiques de trading RL et deployment QuantConnect Live
+
+L'apprentissage par renforcement profond (PPO, SAC, DQN) appris sur des historiques de marche peut produire des politiques performantes en backtest mais violantes en deployment live : drawdown au-dela des limites du fonds, leverage non autorise, concentration sur un titre unique, ordres de gros volume en regime de faible liquidite. La solution academique etablie est le **shielding** (Alshiekh et al. 2018, Konighofer et al. 2023) : un module symbolique intercepte chaque action proposee par la politique RL, verifie qu'elle ne viole aucun invariant (formules SMT sur l'etat du portefeuille et de l'ordre), et la corrige ou la rejette si necessaire. Ce sujet demande d'entrainer une politique RL via QuantConnect (PPO/SAC sur SPY/QQQ ou un panier crypto), d'encoder les invariants de surete en Z3 SMT, d'implementer un shield runtime, puis de comparer (1) la performance shieldee vs non-shieldee en backtest et (2) le comportement en paper trading Binance/IBKR sur 3-4 semaines.
+
+### Objectifs
+- Entrainer une politique RL (PPO ou SAC) sur un univers reduit (5-10 actifs) avec QC-Py-33 ou QC-Py-34, evaluer la baseline en backtest sur 2019-2024
+- Formaliser les invariants de surete en SMT : leverage <= 2x, |position(i)| <= 25% du portfolio, drawdown intra-day <= 10%, ordres <= 5% du volume moyen 20j, no wash trading
+- Implementer un shield Z3 : a chaque action proposee `a`, resoudre `∃ a' : SAT(invariants) ∧ d(a, a') minimal` (projection sur le polytope de surete), avec fallback rejet+`hold` si infaisable
+- Comparer en backtest 2019-2024 : (1) RL pur, (2) RL shieldee, (3) RL re-trainee avec reward penalisant les violations, sur metriques performance ET conformite (compter violations par strategie)
+- Deployer la version shieldee en paper trading via QC-Py-40 (Binance) ou QC-Py-41 (IBKR) sur 3-4 semaines, mesurer la divergence backtest/live et la frequence d'activation du shield
+
+### Notebooks CoursIA pertinents
+
+| Notebook | Chemin | Pertinence |
+|----------|--------|------------|
+| QC-Py-32 RL DQN | [QuantConnect/Python/QC-Py-32-RL-DQN-Trading.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-32-RL-DQN-Trading.ipynb) | DQN, replay buffer, target network |
+| QC-Py-33 RL PPO | [QuantConnect/Python/QC-Py-33-RL-PPO-Trading.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-33-RL-PPO-Trading.ipynb) | PPO, policy gradient, clip ratio |
+| QC-Py-34 RL SAC | [QuantConnect/Python/QC-Py-34-RL-SAC-A2C-Trading.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-34-RL-SAC-A2C-Trading.ipynb) | SAC, entropie maximale, continuous action |
+| RL-Portfolio project | [QuantConnect/projects/RL-Portfolio/](https://github.com/jsboige/CoursIA/tree/main/MyIA.AI.Notebooks/QuantConnect/projects/RL-Portfolio) | Template projet portfolio RL backtested |
+| Linq2Z3 | [SymbolicAI/Linq2Z3.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/SymbolicAI/Linq2Z3.ipynb) | Z3 SMT, encoding LINQ → contraintes |
+| QC-Py-40 Paper Trading Binance | [QuantConnect/Python/QC-Py-40-PaperTrading-Binance.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-40-PaperTrading-Binance.ipynb) | Paper trading crypto, live orders |
+| QC-Py-41 Paper Trading IBKR | [QuantConnect/Python/QC-Py-41-PaperTrading-IBKR.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-41-PaperTrading-IBKR.ipynb) | Paper trading actions/options, IBKR API |
+
+### References externes
+- Alshiekh, M. et al. (2018). "Safe Reinforcement Learning via Shielding." *AAAI 2018*. [arXiv](https://arxiv.org/abs/1708.08611)
+- Konighofer, B. et al. (2023). "Online Shielding for Reinforcement Learning." *Innovations in Systems and Software Engineering*, 19(4). [Springer](https://doi.org/10.1007/s11334-022-00480-4)
+- Garcia, J. & Fernandez, F. (2015). "A Comprehensive Survey on Safe Reinforcement Learning." *JMLR*, 16. [JMLR](https://www.jmlr.org/papers/v16/garcia15a.html)
+- Schulman, J. et al. (2017). "Proximal Policy Optimization Algorithms." *arXiv:1707.06347*. [arXiv](https://arxiv.org/abs/1707.06347)
+- de Moura, L. & Bjorner, N. (2008). "Z3: An Efficient SMT Solver." *TACAS 2008*. [Springer](https://doi.org/10.1007/978-3-540-78800-3_24)
+- Hambly, B., Xu, R. & Yang, H. (2023). "Recent Advances in Reinforcement Learning in Finance." *Mathematical Finance*, 33(3). [Wiley](https://doi.org/10.1111/mafi.12382)
+
+### Difficulte : 5/5
+
+---
+
+#### S7 — Fusion de signaux multi-strategie par argumentation Dung sur le Research-Executor QuantConnect
+
+Le Research-Executor de CoursIA fournit 8 strategies de recherche backtestees independamment (asset class momentum, commodity term structure, defensive ETF rotation, long-short harvest, macro factor rotation, Piotroski F-Score, Puppies of the Dow, volatility regime ML). Chaque strategy genere des signaux contradictoires : Piotroski peut recommander d'acheter un value stock pendant que macro factor rotation recommande de tout sortir des actions cycliques. Une fusion d'ensemble naive (vote majoritaire ou ponderation par Sharpe historique) ignore la structure logique des desaccords. L'argumentation abstraite de Dung (1995) modelise chaque signal comme un argument, les contradictions logiques comme attaques (defensive ETF rotation **attaque** long-short harvest sous regime macro defensif), et calcule des extensions (preferred, grounded, stable) qui constituent une decision rationnellement defendable. Ce sujet demande d'implementer le framework Dung via Tweety, de definir le graphe d'attaques entre les 8 strategies du Research-Executor, et de backtester la strategie fusionnee vs ensemble naif.
+
+### Objectifs
+- Implementer un Argumentation Framework (AF) de Dung en Python via Tweety ou pyArg, avec semantiques preferred / grounded / stable / complete
+- Definir le mapping strategie→argument et les regles d'attaque entre les 8 strategies du Research-Executor (e.g. defensive ETF rotation attaque long-short harvest si VIX > 25, macro factor rotation attaque Piotroski si yield curve inversion, etc.)
+- Implementer un meta-arbitre qui, a chaque rebalance, recupere les signaux des 8 strategies, instancie l'AF avec les attaques contextuelles courantes, calcule l'extension preferred, et alloue uniquement aux strategies dans l'extension
+- Backtester la fusion argumentee sur 2019-2024 vs (1) chaque strategie en isole, (2) ensemble equipondere, (3) ensemble pondere par Sharpe historique, (4) ensemble par regression sur facteurs (Fama-French 5)
+- Analyser la robustesse aux changements de regime : tester sur 2008-2009 (crise), 2020 mars (COVID crash), 2022 (rate hike), comparer max drawdown et recovery time
+
+### Notebooks CoursIA pertinents
+
+| Notebook | Chemin | Pertinence |
+|----------|--------|------------|
+| Tweety/Tweety-1 Argumentation | [SymbolicAI/Tweety/Tweety-1-Argumentation.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/SymbolicAI/Tweety/Tweety-1-Argumentation.ipynb) | Frameworks Dung, extensions, semantiques |
+| Research-Executor | [QuantConnect/projects/Research-Executor/](https://github.com/jsboige/CoursIA/tree/main/MyIA.AI.Notebooks/QuantConnect/projects/Research-Executor) | 8 strategies backtestees pretes a fusionner |
+| QC-Py-13 Alpha Models | [QuantConnect/Python/QC-Py-13-Alpha-Models.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-13-Alpha-Models.ipynb) | Alpha Insights API, ensembling natif QC |
+| QC-Py-14 Portfolio Construction | [QuantConnect/Python/QC-Py-14-Portfolio-Construction-Execution.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-14-Portfolio-Construction-Execution.ipynb) | Portfolio construction model, allocation |
+| QC-Py-28 Regime Detection | [QuantConnect/Python/QC-Py-28-Market-Regime-Detection.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-28-Market-Regime-Detection.ipynb) | Detection de regimes pour contexte d'attaques |
+
+### References externes
+- Dung, P.M. (1995). "On the acceptability of arguments and its fundamental role in nonmonotonic reasoning, logic programming and n-person games." *Artificial Intelligence*, 77(2), 321-357. [ScienceDirect](https://doi.org/10.1016/0004-3702(94)00041-X)
+- Baroni, P., Caminada, M. & Giacomin, M. (2018). *Handbook of Formal Argumentation*. College Publications. [CollegePub](https://www.collegepublications.co.uk/handbook/)
+- Atkinson, K. et al. (2017). "Towards artificial argumentation." *AI Magazine*, 38(3), 25-36. [AAAI](https://doi.org/10.1609/aimag.v38i3.2704)
+- Asness, C., Frazzini, A. & Pedersen, L.H. (2019). "Quality minus junk." *Review of Accounting Studies*, 24(1). [Springer](https://doi.org/10.1007/s11142-018-9470-2)
+- Tweety Project. "Tweety Libraries Documentation." [tweetyproject.org](https://tweetyproject.org/)
+
+### Difficulte : 4/5
+
+---
+
+#### S8 — Model checking CTL d'un trading bot avant deployment live QuantConnect
+
+Avant de deployer un bot de trading en live (capital reel), il faut prouver formellement qu'il ne violera jamais ses contraintes de surete : pas de margin call, pas de leverage > 2x, pas de stop-loss desactive, le bot revient toujours en etat `flat` apres un signal `halt`. Le model checking CTL/LTL (Clarke, Emerson, Sistla 1986) est l'outil academique standard : on modelise le bot comme une structure de Kripke (etats = configuration portefeuille + signaux courants ; transitions = orderes/fills/signaux), on encode les proprietes de surete en formules CTL (`AG !margin_call`, `AG (drawdown >= 0.2 → AF flat)`, `EF profit_target`), et un model checker (NuSMV, SPIN, BDD-based) verifie exhaustivement toutes les executions accessibles ou produit un contre-exemple. Ce sujet demande de modeliser une strategie de trading complete en automate fini, de la verifier par model checking, puis de deployer la version certifiee sur QuantConnect via QC-Py-27 (production) et de comparer le comportement reel aux invariants prouves.
+
+### Objectifs
+- Modeliser une strategie concrete (e.g. trend-following ou mean-reversion 2-actifs) comme automate fini : etats = `{flat, long, short, halted, margin_warning}`, variables = position size, drawdown, signal, transitions deterministes ou non-deterministes (slippage, partial fills)
+- Encoder en CTL les proprietes de surete : `AG !(margin_call)`, `AG (drawdown > 0.15 → AX !buy)`, `AG (halted → AF flat)`, `EF profit_target`, `AG (long → EF flat)`
+- Verifier par NuSMV (BDD-based) ou via PyEDA + SAT solver, analyser les contre-exemples si une propriete echoue (raffiner le modele ou corriger la logique)
+- Implementer la strategie verifiee dans QC, deployer via QC-Py-15 (parameter optimization) puis QC-Py-27 (production), comparer le comportement en backtest 2019-2024 et en paper trading 2-4 semaines aux invariants CTL prouves
+- Mesurer le gap entre modele formel et execution reelle (ex: slippage, halt sur halt-circuit-breaker, latence d'ordres) et discuter comment etendre le modele pour reduire ce gap
+
+### Notebooks CoursIA pertinents
+
+| Notebook | Chemin | Pertinence |
+|----------|--------|------------|
+| Tweety/Tweety-3 Modal Logic | [SymbolicAI/Tweety/Tweety-3-Modal-Logic.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/SymbolicAI/Tweety/Tweety-3-Modal-Logic.ipynb) | Modal logic, structures de Kripke |
+| QC-Py-09 Order Types | [QuantConnect/Python/QC-Py-09-Order-Types.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-09-Order-Types.ipynb) | Modeles d'ordres (market, limit, stop), transitions |
+| QC-Py-15 Parameter Optimization | [QuantConnect/Python/QC-Py-15-Parameter-Optimization.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-15-Parameter-Optimization.ipynb) | Optimisation hyperparametres, robustesse |
+| QC-Py-27 Production Deployment | [QuantConnect/Python/QC-Py-27-Production-Deployment.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-27-Production-Deployment.ipynb) | Deployment live, monitoring |
+| Trend-Following project | [QuantConnect/projects/Trend-Following/](https://github.com/jsboige/CoursIA/tree/main/MyIA.AI.Notebooks/QuantConnect/projects/Trend-Following) | Template strategie complete a modeliser |
+| QC-Py-40 / QC-Py-41 Paper Trading | [QuantConnect/Python/](https://github.com/jsboige/CoursIA/tree/main/MyIA.AI.Notebooks/QuantConnect/Python) | Paper trading post-verification |
+
+### References externes
+- Clarke, E.M., Emerson, E.A. & Sistla, A.P. (1986). "Automatic verification of finite-state concurrent systems using temporal logic specifications." *ACM TOPLAS*, 8(2), 244-263. [ACM](https://doi.org/10.1145/5397.5399)
+- Baier, C. & Katoen, J.-P. (2008). *Principles of Model Checking*. MIT Press. [MIT Press](https://mitpress.mit.edu/9780262026499/principles-of-model-checking/)
+- Cavada, R. et al. (2014). "The NuXMV Symbolic Model Checker." *CAV 2014*. [Springer](https://doi.org/10.1007/978-3-319-08867-9_22)
+- Cimatti, A. et al. (2002). "NuSMV 2: An OpenSource Tool for Symbolic Model Checking." *CAV 2002*. [Springer](https://doi.org/10.1007/3-540-45657-0_29)
+- Holzmann, G.J. (2003). *The SPIN Model Checker: Primer and Reference Manual*. Addison-Wesley. [Pearson](https://www.pearson.com/en-us/subject-catalog/p/spin-model-checker-the-primer-and-reference-manual/P200000009305)
+
+### Difficulte : 4/5
 
 ---
 
