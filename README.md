@@ -331,7 +331,7 @@ Les notebooks suivants sont disponibles dans le depot CoursIA ([jsboige/CoursIA]
 | [S4](#s4--programmation-probabiliste-symbolique-pour-la-detection-de-regimes-de-marche) | Programmation probabiliste symbolique pour la detection de regimes de marche | 3/5 |
 | [S5](#s5--enumeration-asp-des-strategies-doptions-multi-jambes-et-backtest-quantconnect) | Enumeration ASP des strategies d'options multi-jambes et backtest QuantConnect | 4/5 |
 | [S6](#s6--safe-rl-shielding-smt-des-politiques-de-trading-rl-et-deployment-quantconnect-live) | Safe RL : shielding SMT des politiques de trading RL et deployment QuantConnect Live | 5/5 |
-| [S7](#s7--fusion-de-signaux-multi-strategie-par-argumentation-dung-sur-le-research-executor-quantconnect) | Fusion de signaux multi-strategie par argumentation Dung sur le Research-Executor QuantConnect | 4/5 |
+| [S7](#s7--fusion-de-signaux-multi-strategie-par-argumentation-dung-sur-le-research-executor-quantconnect) | Fusion de signaux multi-strategie par argumentation Dung sur le Research-Executor QuantConnect | 5/5 |
 | [S8](#s8--model-checking-ctl-dun-trading-bot-avant-deployment-live-quantconnect) | Model checking CTL d'un trading bot avant deployment live QuantConnect | 4/5 |
 
 ### Categorie T : Sciences Sociales Computationnelles et Choix Collectif
@@ -2509,6 +2509,8 @@ Construire un systeme d'aide a la decision pour la planification de traitements 
 4. Intégrer les trois couches dans un pipeline de décision : ontologie → contraintes → probabilités → recommandation
 5. Valider sur les cas cliniques du CoursIA et comparer avec les recommandations du panel d'oncologues
 
+> **Donnees** : le dataset CoursIA `CaseStudies/Oncology-Planning/` fournit des cas cliniques **synthetiques** structures pour le TP. L'utilisation de donnees reelles patient est envisageable en extension, mais impose des contraintes legales (consentement, anonymisation, RGPD) qui sortent du scope technique du sujet. Par defaut, travailler sur donnees synthetiques.
+
 ### Notebooks CoursIA pertinents
 
 | Notebook | Chemin | Pertinence |
@@ -3107,6 +3109,8 @@ La detection de regimes de marche (bull, bear, range, crash) est un probleme cla
 
 Les strategies d'options multi-jambes (straddles, strangles, butterflies, iron condors, calendar spreads, ratio spreads) forment un espace combinatoire enorme : sur un sous-jacent donne avec N strikes et M expirations, il existe O((N×M)^k) combinaisons a k jambes. La selection sous contraintes (delta-neutralite, vega-positivite, theta cible, marge initiale bornee, capital deploye, asymetrie risk-reward) est un probleme d'enumeration symbolique mieux capture par Answer Set Programming (ASP) que par des solveurs CP-SAT/MIP classiques : ASP exprime naturellement les regles de choix (`{ leg(strike, exp, side) : strike ∈ Strikes, ... } = k`), les contraintes structurelles (`:- delta_total(D), |D| > 0.05`), et le raisonnement non-monotone (defaut : strategy is balanced unless evidence shows otherwise). Ce sujet demande de modeliser l'espace combinatoire des strategies en ASP/Clingo, d'enumerer les strategies admissibles sous contraintes de risque, puis de les backtester systematiquement via QuantConnect Lean pour comparer la realisation effective des proprietes symboliquement attendues.
 
+> **Cadrage ASP vs CP-SAT (PrCon Cat M)** : ASP est utilise ici pour son **raisonnement non-monotone** (defauts, exceptions multiples sur strategies d'options : "strategie equilibree sauf evidence contraire de skew extreme") et la **multiplicite des answer sets** (toutes les strategies admissibles, pas seulement l'optimale). CP-SAT/MIP (PrCon Cat M) reste l'angle optimisation pure (minimiser un objectif numerique sur variables algebriques). ASP peut optimiser via `#minimize`, mais sa force distinctive est la negation par defaut et la representation declarative de regles metier — c'est ce que S5 exploite. PrCon Cat M reste le parcours pour l'optimisation combinatoire pure.
+
 ### Objectifs
 - Modeliser en ASP/Clingo la grammaire des strategies multi-jambes : choix de strikes/expirations, sides (long/short), nombre de contrats, avec contraintes structurelles (delta target, vega/theta limites, margin, max loss)
 - Enumerer les solutions admissibles via `clingo --models=0` pour un univers d'options donne (ex: SPX hebdomadaire ou QQQ mensuel) sur differents regimes de volatilite
@@ -3146,6 +3150,8 @@ L'apprentissage par renforcement profond (PPO, SAC, DQN) appris sur des historiq
 - Comparer en backtest 2019-2024 : (1) RL pur, (2) RL shieldee, (3) RL re-trainee avec reward penalisant les violations, sur metriques performance ET conformite (compter violations par strategie)
 - Deployer la version shieldee en paper trading via QC-Py-40 (Binance) ou QC-Py-41 (IBKR) sur 3-4 semaines, mesurer la divergence backtest/live et la frequence d'activation du shield
 
+> **Plan B (si paper trading instable)** : si le deployment live echoue (latence API, restrictions broker, donnees manquantes), demontrer le shielding sur backtest historique 2018-2025 avec (a) audit exhaustif des violations detectees/corrigees par le shield, (b) simulation Monte Carlo de scenarios de stress (flash crash, gap overnight, halt circuit-breaker) pour mesurer la robustesse du shield hors-distribution. Ce fallback preserve la valeur scientifique du sujet sans dependre d'une infrastructure live.
+
 ### Notebooks CoursIA pertinents
 
 | Notebook | Chemin | Pertinence |
@@ -3172,7 +3178,7 @@ L'apprentissage par renforcement profond (PPO, SAC, DQN) appris sur des historiq
 
 #### S7 — Fusion de signaux multi-strategie par argumentation Dung sur le Research-Executor QuantConnect
 
-Le Research-Executor de CoursIA fournit 8 strategies de recherche backtestees independamment (asset class momentum, commodity term structure, defensive ETF rotation, long-short harvest, macro factor rotation, Piotroski F-Score, Puppies of the Dow, volatility regime ML). Chaque strategy genere des signaux contradictoires : Piotroski peut recommander d'acheter un value stock pendant que macro factor rotation recommande de tout sortir des actions cycliques. Une fusion d'ensemble naive (vote majoritaire ou ponderation par Sharpe historique) ignore la structure logique des desaccords. L'argumentation abstraite de Dung (1995) modelise chaque signal comme un argument, les contradictions logiques comme attaques (defensive ETF rotation **attaque** long-short harvest sous regime macro defensif), et calcule des extensions (preferred, grounded, stable) qui constituent une decision rationnellement defendable. Ce sujet demande d'implementer le framework Dung via Tweety, de definir le graphe d'attaques entre les 8 strategies du Research-Executor, et de backtester la strategie fusionnee vs ensemble naif.
+Le Research-Executor de CoursIA fournit 8 strategies de recherche backtestees independamment (asset class momentum, commodity term structure, defensive ETF rotation, long-short harvest, macro factor rotation, Piotroski F-Score, Puppies of the Dow, volatility regime ML). Chaque strategy genere des signaux contradictoires : Piotroski peut recommander d'acheter un value stock pendant que macro factor rotation recommande de tout sortir des actions cycliques. Une fusion d'ensemble naive (vote majoritaire ou ponderation par Sharpe historique) ignore la structure logique des desaccords. L'argumentation abstraite de Dung (1995) modelise chaque signal comme un argument, les contradictions logiques comme attaques (defensive ETF rotation **attaque** long-short harvest sous regime macro defensif), et calcule des extensions (preferred, grounded, stable) qui constituent une decision rationnellement defendable. Ce sujet demande d'implementer le framework Dung via Tweety, de definir le graphe d'attaques entre les 8 strategies du Research-Executor, et de backtester la strategie fusionnee vs ensemble naif. Le volet avance compare les semantiques d'acceptabilite de Dung (preferred, grounded, stable) aux procedures de vote social choice (Borda, Copeland, approval) sur les memes signaux, et verifie formellement si la decision argumentee satisfait des axiomes de choix social (Pareto, independence des alternatives non pertinentes) via l'axiomatisation Arrow/Sen de Tweety-5 et GameTheory/16e.
 
 ### Objectifs
 - Implementer un Argumentation Framework (AF) de Dung en Python via Tweety ou pyArg, avec semantiques preferred / grounded / stable / complete
@@ -3180,6 +3186,7 @@ Le Research-Executor de CoursIA fournit 8 strategies de recherche backtestees in
 - Implementer un meta-arbitre qui, a chaque rebalance, recupere les signaux des 8 strategies, instancie l'AF avec les attaques contextuelles courantes, calcule l'extension preferred, et alloue uniquement aux strategies dans l'extension
 - Backtester la fusion argumentee sur 2019-2024 vs (1) chaque strategie en isole, (2) ensemble equipondere, (3) ensemble pondere par Sharpe historique, (4) ensemble par regression sur facteurs (Fama-French 5)
 - Analyser la robustesse aux changements de regime : tester sur 2008-2009 (crise), 2020 mars (COVID crash), 2022 (rate hike), comparer max drawdown et recovery time
+- Comparer formellement la decision Dung (extension preferred) aux procedures de vote classique (Borda, Copeland, approval) sur les memes signaux et verifier si la decision argumentee satisfait les axiomes de choix social (Pareto, IIA) via Tweety-5 et GameTheory/16e/16f
 
 ### Notebooks CoursIA pertinents
 
@@ -3190,6 +3197,8 @@ Le Research-Executor de CoursIA fournit 8 strategies de recherche backtestees in
 | QC-Py-13 Alpha Models | [QuantConnect/Python/QC-Py-13-Alpha-Models.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-13-Alpha-Models.ipynb) | Alpha Insights API, ensembling natif QC |
 | QC-Py-14 Portfolio Construction | [QuantConnect/Python/QC-Py-14-Portfolio-Construction-Execution.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-14-Portfolio-Construction-Execution.ipynb) | Portfolio construction model, allocation |
 | QC-Py-28 Regime Detection | [QuantConnect/Python/QC-Py-28-Market-Regime-Detection.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/QuantConnect/Python/QC-Py-28-Market-Regime-Detection.ipynb) | Detection de regimes pour contexte d'attaques |
+| Tweety-5 Voting/Social Choice | [SymbolicAI/Tweety/Tweety-5-Voting-Social-Choice.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/SymbolicAI/Tweety/Tweety-5-Voting-Social-Choice.ipynb) | Arrow/Sen, procedures de vote, axiomes |
+| GT-16e/16f Social Choice | [GameTheory/16e-Social-Choice.ipynb](https://github.com/jsboige/CoursIA/blob/main/MyIA.AI.Notebooks/GameTheory/16e-Social-Choice.ipynb) | Arrow/Sen corollaires, comparaison semantiques |
 
 ### References externes
 - Dung, P.M. (1995). "On the acceptability of arguments and its fundamental role in nonmonotonic reasoning, logic programming and n-person games." *Artificial Intelligence*, 77(2), 321-357. [ScienceDirect](https://doi.org/10.1016/0004-3702(94)00041-X)
@@ -3197,19 +3206,21 @@ Le Research-Executor de CoursIA fournit 8 strategies de recherche backtestees in
 - Atkinson, K. et al. (2017). "Towards artificial argumentation." *AI Magazine*, 38(3), 25-36. [AAAI](https://doi.org/10.1609/aimag.v38i3.2704)
 - Asness, C., Frazzini, A. & Pedersen, L.H. (2019). "Quality minus junk." *Review of Accounting Studies*, 24(1). [Springer](https://doi.org/10.1007/s11142-018-9470-2)
 - Tweety Project. "Tweety Libraries Documentation." [tweetyproject.org](https://tweetyproject.org/)
+- Arrow, K.J. (1951). *Social Choice and Individual Values* (2nd ed. 1963). Yale University Press. [Yale](https://www.jstor.org/stable/j.ctv1h4ckhn)
+- Sen, A.K. (1970). "The Impossibility of a Paretian Liberal." *Journal of Political Economy*, 78(1), 152-157. [JSTOR](https://www.jstor.org/stable/1829634)
 
-### Difficulte : 4/5
+### Difficulte : 5/5
 
 ---
 
 #### S8 — Model checking CTL d'un trading bot avant deployment live QuantConnect
 
-Avant de deployer un bot de trading en live (capital reel), il faut prouver formellement qu'il ne violera jamais ses contraintes de surete : pas de margin call, pas de leverage > 2x, pas de stop-loss desactive, le bot revient toujours en etat `flat` apres un signal `halt`. Le model checking CTL/LTL (Clarke, Emerson, Sistla 1986) est l'outil academique standard : on modelise le bot comme une structure de Kripke (etats = configuration portefeuille + signaux courants ; transitions = orderes/fills/signaux), on encode les proprietes de surete en formules CTL (`AG !margin_call`, `AG (drawdown >= 0.2 → AF flat)`, `EF profit_target`), et un model checker (NuSMV, SPIN, BDD-based) verifie exhaustivement toutes les executions accessibles ou produit un contre-exemple. Ce sujet demande de modeliser une strategie de trading complete en automate fini, de la verifier par model checking, puis de deployer la version certifiee sur QuantConnect via QC-Py-27 (production) et de comparer le comportement reel aux invariants prouves.
+Avant de deployer un bot de trading en live (capital reel), il faut prouver formellement qu'il ne violera jamais ses contraintes de surete : pas de margin call, pas de leverage > 2x, pas de stop-loss desactive, le bot revient toujours en etat `flat` apres un signal `halt`. Le model checking CTL/LTL (Clarke, Emerson, Sistla 1986) est l'outil academique standard : on modelise le bot comme une structure de Kripke (etats = configuration portefeuille + signaux courants ; transitions = orderes/fills/signaux), on encode les proprietes de surete en formules CTL (`AG !margin_call`, `AG (drawdown >= 0.2 → AF flat)`, `EF profit_target`), et un model checker verifie exhaustivement toutes les executions accessibles ou produit un contre-exemple. L'approche de base utilise **NuSMV** (BDD-based, CTL deterministe sur automate fini discret : etats = `{flat, long, short, halted}`, transitions = ordres/fills/signaux). L'extension avancee utilise **Storm** ou **PRISM** (model checking probabiliste PCTL sur Markov Decision Processes) pour quantifier la probabilite de violation sous incertitude de marche (slippage, partial fills, gap). Ce sujet demande de modeliser une strategie de trading complete en automate fini, de la verifier par model checking (NuSMV deterministe ; Storm/PRISM probabiliste en extension), puis de deployer la version certifiee sur QuantConnect via QC-Py-27 (production) et de comparer le comportement reel aux invariants prouves.
 
 ### Objectifs
 - Modeliser une strategie concrete (e.g. trend-following ou mean-reversion 2-actifs) comme automate fini : etats = `{flat, long, short, halted, margin_warning}`, variables = position size, drawdown, signal, transitions deterministes ou non-deterministes (slippage, partial fills)
 - Encoder en CTL les proprietes de surete : `AG !(margin_call)`, `AG (drawdown > 0.15 → AX !buy)`, `AG (halted → AF flat)`, `EF profit_target`, `AG (long → EF flat)`
-- Verifier par NuSMV (BDD-based) ou via PyEDA + SAT solver, analyser les contre-exemples si une propriete echoue (raffiner le modele ou corriger la logique)
+- Verifier par **NuSMV** (BDD-based, CTL deterministe) : exhaustivite sur automate fini, contre-exemples tangibles si propriete echoue. En extension : encoder le modele comme MDP et verifier par **Storm** ou **PRISM** (PCTL : `P>=0.99 [G !margin_call]`), comparant la certitude totale (NuSMV) a la certitude probabilisee (Storm)
 - Implementer la strategie verifiee dans QC, deployer via QC-Py-15 (parameter optimization) puis QC-Py-27 (production), comparer le comportement en backtest 2019-2024 et en paper trading 2-4 semaines aux invariants CTL prouves
 - Mesurer le gap entre modele formel et execution reelle (ex: slippage, halt sur halt-circuit-breaker, latence d'ordres) et discuter comment etendre le modele pour reduire ce gap
 
@@ -3229,7 +3240,8 @@ Avant de deployer un bot de trading en live (capital reel), il faut prouver form
 - Baier, C. & Katoen, J.-P. (2008). *Principles of Model Checking*. MIT Press. [MIT Press](https://mitpress.mit.edu/9780262026499/principles-of-model-checking/)
 - Cavada, R. et al. (2014). "The NuXMV Symbolic Model Checker." *CAV 2014*. [Springer](https://doi.org/10.1007/978-3-319-08867-9_22)
 - Cimatti, A. et al. (2002). "NuSMV 2: An OpenSource Tool for Symbolic Model Checking." *CAV 2002*. [Springer](https://doi.org/10.1007/3-540-45657-0_29)
-- Holzmann, G.J. (2003). *The SPIN Model Checker: Primer and Reference Manual*. Addison-Wesley. [Pearson](https://www.pearson.com/en-us/subject-catalog/p/spin-model-checker-the-primer-and-reference-manual/P200000009305)
+- Hensel, C. et al. (2022). "The Probabilistic Model Checker Storm." *STTT*, 24(4). [Springer](https://doi.org/10.1007/s10009-021-00620-z)
+- Kwiatkowska, M., Norman, G. & Parker, D. (2011). "PRISM 4.0: Verification of Probabilistic Real-Time Systems." *CAV 2011*. [Springer](https://doi.org/10.1007/978-3-642-22110-1_47)
 
 ### Difficulte : 4/5
 
