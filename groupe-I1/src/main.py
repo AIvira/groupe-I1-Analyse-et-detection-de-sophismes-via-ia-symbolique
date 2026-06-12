@@ -1,0 +1,423 @@
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import json
+import pickle
+import sys
+from pathlib import Path
+
+# Lazy package bootstrap: when run as `python src/main.py`, expose `src` on path.
+if __package__ in {None, ""}:
+    project_root = Path(__file__).resolve().parents[1]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+# IMPORTANT: keep top-level imports cheap.
+# `torch`/`transformers` are heavy (several seconds to import) and are only
+# needed by the `train-transformer` / `train-nli` commands. We import them
+# lazily inside those command handlers so that `train`, `predict` and
+# `evaluate` start instantly.
+
+DEFAULT_MODEL_PATH = Path("models/baseline.pkl")
+DEFAULT_MAPPINGS_PATH = Path("data/raw/causalNLP/mappings.csv")
+DEFAULT_REPORT_PATH = Path("results/training_report.txt")
+DEFAULT_PREDICTIONS_PATH = Path("results/test_predictions.csv")
+DEFAULT_ERRORS_PATH = Path("results/test_errors.csv")
+DEFAULT_METRICS_PATH = Path("results/metrics.json")
+DEFAULT_TRANSFORMER_DIR = Path("models/transformer")
+DEFAULT_NLI_DIR = Path("models/nli")
+
+
+def _print_artifacts(artifacts) -> None:
+    """Shared, compact console summary for any training artifacts."""
+    from src.metrics import format_metrics_console
+
+    print(format_metrics_console(artifacts))
+
+
+def cmd_train(args: argparse.Namespace) -> None:
+    from src.domain import TrainingConfig
+    from src.training import (
+        train_baseline,
+        write_error_examples_csv,
+        write_predictions_csv,
+        write_training_summary,
+    )
+    from src.metrics import write_metrics_json
+
+    config = TrainingConfig()
+    artifacts = train_baseline(args.dataset, config)
+
+    model_path = Path(args.model_path)
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    with model_path.open("wb") as handle:
+        pickle.dump(artifacts.pipeline, handle)
+
+    write_training_summary(artifacts, args.report_path)
+    write_predictions_csv(artifacts, args.predictions_path)
+    write_error_examples_csv(artifacts, args.errors_path)
+    write_metrics_json(artifacts, args.metrics_path)
+
+    _print_artifacts(artifacts)
+    print(f"Model saved to:    {model_path}")
+    print(f"Report:            {args.report_path}")
+    print(f"Predictions:       {args.predictions_path}")
+    print(f"Metrics (JSON):    {args.metrics_path}")
+
+
+def cmd_predict(args: argparse.Namespace) -> None:
+    from src.pipeline import HybridFallacyPipeline
+
+    model = None
+    model_path = Path(args.model_path)
+    if model_path.exists():
+        with model_path.open("rb") as handle:
+            model = pickle.load(handle)
+    mode = args.mode
+    if model is None and mode in {"ml", "hybrid"}:
+        print(
+            f"[warn] no trained model at {model_path}; falling back to --mode rules. "
+            "Run `train` first.",
+            file=sys.stderr,
+        )
+        mode = "rules"
+
+    pipeline = HybridFallacyPipeline(model=model, mappings_path=args.mappings_path)
+
+    if mode == "rules":
+        prediction = pipeline.predict_rules(args.text)
+    elif mode == "ml":
+        prediction = pipeline.predict_ml(args.text)
+    else:
+        prediction = pipeline.predict_hybrid(args.text)
+
+    print(json.dumps(dataclasses.asdict(prediction), ensure_ascii=False, indent=2))
+
+
+def cmd_train_transformer(args: argparse.Namespace) -> None:
+    # Heavy deps imported only here.
+    from src.transformer_training import train_transformer_classifier
+    from src.training import (
+        write_error_examples_csv,
+        write_predictions_csv,
+        write_training_summary,
+    )
+    from src.metrics import write_metrics_json
+
+    artifacts = train_transformer_classifier(
+        dataset_path=args.dataset,
+        output_dir=args.output_dir,
+        pretrained_model_name=args.pretrained_model_name,
+        num_train_epochs=args.epochs,
+    )
+    write_training_summary(artifacts, args.report_path)
+    write_predictions_csv(artifacts, args.predictions_path)
+    write_error_examples_csv(artifacts, args.errors_path)
+    write_metrics_json(artifacts, args.metrics_path)
+
+    _print_artifacts(artifacts)
+    print(f"Model directory:   {artifacts.output_dir}")
+    print(f"Metrics (JSON):    {args.metrics_path}")
+
+
+def cmd_train_nli(args: argparse.Namespace) -> None:
+    from src.nli_training import train_nli_label_matching
+    from src.training import (
+        write_error_examples_csv,
+        write_predictions_csv,
+        write_training_summary,
+    )
+    from src.metrics import write_metrics_json
+
+    artifacts = train_nli_label_matching(
+        dataset_path=args.dataset,
+        mappings_path=args.mappings_path,
+        output_dir=args.output_dir,
+        pretrained_model_name=args.pretrained_model_name,
+        num_train_epochs=args.epochs,
+    )
+    write_training_summary(artifacts, args.report_path)
+    write_predictions_csv(artifacts, args.predictions_path)
+    write_error_examples_csv(artifacts, args.errors_path)
+    write_metrics_json(artifacts, args.metrics_path)
+
+    _print_artifacts(artifacts)
+    print(f"Model directory:   {artifacts.output_dir}")
+    print(f"Metrics (JSON):    {args.metrics_path}")
+
+
+def cmd_analyze(args: argparse.Namespace) -> None:
+    """Analyse neuro-symbolique complete (neuronal + regles + Dung/Tweety)."""
+    from src.pipeline import HybridFallacyPipeline
+
+    model = None
+    model_path = Path(args.model_path)
+    if model_path.exists():
+        with model_path.open("rb") as handle:
+            model = pickle.load(handle)
+
+    pipeline = HybridFallacyPipeline(
+        model=model,
+        mappings_path=args.mappings_path,
+        extract_structure=not args.no_structure,
+    )
+    result = pipeline.analyze(args.text)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_extract(args: argparse.Namespace) -> None:
+    """Extraire la structure argumentative d'un texte (LLM ou heuristique)."""
+    from src.extraction import get_extractor
+
+    extractor = get_extractor(prefer_llm=not args.no_llm)
+    argmap = extractor.extract(args.text)
+    out = argmap.to_dict()
+    out["coherence"] = argmap.coherence("grounded")
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+
+
+def cmd_eval_corpus(args: argparse.Namespace) -> None:
+    """Charger un corpus AIF (US2016), projeter en AF de Dung, evaluer."""
+    from src.corpus_aif import US2016_JSON_URL, attack_subgraph, download_aif, load_aif
+
+    corpus_path = Path(args.corpus_path)
+    if not corpus_path.exists():
+        if args.download:
+            print(f"[eval-corpus] telechargement {US2016_JSON_URL} ...")
+            download_aif(US2016_JSON_URL, str(corpus_path))
+        else:
+            raise SystemExit(
+                f"Corpus introuvable: {corpus_path}. Relancer avec --download "
+                "ou fournir --corpus-path."
+            )
+
+    amap = load_aif(str(corpus_path))
+    sub = attack_subgraph(amap)
+    print("=" * 56)
+    print("  CORPUS AIF -> AF de Dung (TweetyProject)")
+    print("=" * 56)
+    print(amap.summary())
+    print(f"sous-graphe d'attaques : {len(sub.units)} arguments, {len(sub.attacks())} attaques")
+    for sem in ("grounded", "stable", "preferred"):
+        if sem != "grounded" and not args.all_semantics:
+            continue
+        coh = sub.coherence(sem)
+        print(
+            f"  {sem:<10}: accepte={len(coh['accepted'])}  rejete={len(coh['rejected'])}  "
+            f"extensions={coh['n_extensions']}  coherent={coh['coherent']}"
+        )
+
+
+def cmd_demo_af(args: argparse.Namespace) -> None:
+    """Demontre les semantiques de Dung sur un AF (TweetyProject)."""
+    from src.symbolic import DungAF
+
+    af = DungAF()
+    for src_node, tgt_node in args.attacks:
+        af.add_attack(src_node, tgt_node)
+    print(af.describe())
+
+
+def cmd_evaluate(args: argparse.Namespace) -> None:
+    """Re-print metrics from a saved predictions CSV without retraining."""
+    from src.metrics import metrics_from_predictions_csv, format_metrics_dict
+
+    metrics = metrics_from_predictions_csv(args.predictions_path)
+    print(format_metrics_dict(metrics))
+
+
+def cmd_classify_llm(args: argparse.Namespace) -> None:
+    """Classer le test avec Claude (version 2) et ecrire predictions + metriques."""
+    import json as _json
+
+    import pandas as pd
+
+    from src.domain import TrainingConfig
+    from src.training import build_split_datasets, load_dataset
+    from src.llm_classifier import LLMFallacyClassifier, llm_available
+    from src.metrics import compute_metrics, format_metrics_dict
+
+    if not llm_available():
+        raise SystemExit(
+            "Classifieur LLM indisponible : exporter ANTHROPIC_API_KEY et installer `anthropic`."
+        )
+
+    config = TrainingConfig()
+    df = load_dataset(args.dataset, config)
+    _, _, test_df = build_split_datasets(df, config)
+    if args.limit:
+        test_df = test_df.head(args.limit)
+
+    texts = test_df[config.text_column].astype(str).tolist()
+    y_true = test_df[config.label_column].astype(str).tolist()
+
+    clf = LLMFallacyClassifier(model=args.model)
+
+    def progress(done, total):
+        print(f"\r  classification LLM: {done}/{total}", end="", file=sys.stderr, flush=True)
+
+    y_pred = clf.classify_many(texts, on_progress=progress)
+    print("", file=sys.stderr)
+
+    out = pd.DataFrame({"text": texts, "label": y_true, "predicted_label": y_pred})
+    Path(args.predictions_path).parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(args.predictions_path, index=False)
+
+    metrics = compute_metrics(y_true, y_pred)
+    payload = {"model_name": f"llm:{args.model or 'claude-opus-4-8'}", "test_metrics": metrics}
+    Path(args.metrics_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.metrics_path).write_text(_json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    print(format_metrics_dict(metrics))
+    print(f"Predictions: {args.predictions_path}")
+    print(f"Metrics (JSON): {args.metrics_path}")
+
+
+def cmd_compare(args: argparse.Namespace) -> None:
+    """Comparer plusieurs approches depuis leurs fichiers metrics.json."""
+    import json as _json
+
+    rows = []
+    for path in args.metrics_paths:
+        p = Path(path)
+        if not p.exists():
+            print(f"[warn] absent: {path}", file=sys.stderr)
+            continue
+        data = _json.loads(p.read_text(encoding="utf-8"))
+        m = data.get("test_metrics", {})
+        rows.append((
+            data.get("model_name", p.stem),
+            m.get("n_examples", 0),
+            m.get("accuracy", 0.0),
+            m.get("macro_f1", 0.0),
+            m.get("balanced_accuracy", 0.0),
+        ))
+
+    if not rows:
+        raise SystemExit("Aucun fichier de metriques lisible.")
+
+    print("=" * 72)
+    print("  COMPARAISON DES APPROCHES")
+    print("=" * 72)
+    print(f"  {'modele':<34}{'n':>6}{'accuracy':>10}{'macroF1':>10}{'bal.acc':>10}")
+    print("-" * 72)
+    for name, n, acc, mf1, bacc in sorted(rows, key=lambda r: -r[3]):
+        print(f"  {name:<34}{n:>6}{acc:>10.4f}{mf1:>10.4f}{bacc:>10.4f}")
+    print("=" * 72)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="sophismes",
+        description="I1 - detection de sophismes (baseline ML, transformer, NLI, symbolique).",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # train (baseline sklearn, instantane)
+    p = sub.add_parser("train", help="Baseline TF-IDF (rapide, sans torch).")
+    p.add_argument("--dataset", required=True, help="CSV normalise (text,label,split,...).")
+    p.add_argument("--model-path", default=str(DEFAULT_MODEL_PATH))
+    p.add_argument("--report-path", default=str(DEFAULT_REPORT_PATH))
+    p.add_argument("--predictions-path", default=str(DEFAULT_PREDICTIONS_PATH))
+    p.add_argument("--errors-path", default=str(DEFAULT_ERRORS_PATH))
+    p.add_argument("--metrics-path", default=str(DEFAULT_METRICS_PATH))
+    p.set_defaults(func=cmd_train)
+
+    # predict
+    p = sub.add_parser("predict", help="Predire le sophisme d'un texte.")
+    p.add_argument("--text", required=True)
+    p.add_argument("--mode", choices=["rules", "ml", "hybrid"], default="hybrid")
+    p.add_argument("--model-path", default=str(DEFAULT_MODEL_PATH))
+    p.add_argument("--mappings-path", default=str(DEFAULT_MAPPINGS_PATH))
+    p.set_defaults(func=cmd_predict)
+
+    # train-transformer (charge torch a la demande)
+    p = sub.add_parser("train-transformer", help="Fine-tune un transformer (necessite torch).")
+    p.add_argument("--dataset", required=True)
+    p.add_argument("--output-dir", default=str(DEFAULT_TRANSFORMER_DIR))
+    p.add_argument("--pretrained-model-name", default="roberta-base")
+    p.add_argument("--epochs", type=int, default=4)
+    p.add_argument("--report-path", default=str(DEFAULT_REPORT_PATH))
+    p.add_argument("--predictions-path", default=str(DEFAULT_PREDICTIONS_PATH))
+    p.add_argument("--errors-path", default=str(DEFAULT_ERRORS_PATH))
+    p.add_argument("--metrics-path", default=str(DEFAULT_METRICS_PATH))
+    p.set_defaults(func=cmd_train_transformer)
+
+    # train-nli (charge torch a la demande)
+    p = sub.add_parser("train-nli", help="Label-matching par entailment (necessite torch).")
+    p.add_argument("--dataset", required=True)
+    p.add_argument("--mappings-path", default=str(DEFAULT_MAPPINGS_PATH))
+    p.add_argument("--output-dir", default=str(DEFAULT_NLI_DIR))
+    p.add_argument("--pretrained-model-name", default="roberta-base")
+    p.add_argument("--epochs", type=int, default=4)
+    p.add_argument("--report-path", default=str(DEFAULT_REPORT_PATH))
+    p.add_argument("--predictions-path", default=str(DEFAULT_PREDICTIONS_PATH))
+    p.add_argument("--errors-path", default=str(DEFAULT_ERRORS_PATH))
+    p.add_argument("--metrics-path", default=str(DEFAULT_METRICS_PATH))
+    p.set_defaults(func=cmd_train_nli)
+
+    # analyze (pipeline neuro-symbolique complet)
+    p = sub.add_parser("analyze", help="Analyse neuro-symbolique d'un texte (extraction + Dung/Tweety).")
+    p.add_argument("--text", required=True)
+    p.add_argument("--model-path", default=str(DEFAULT_MODEL_PATH))
+    p.add_argument("--mappings-path", default=str(DEFAULT_MAPPINGS_PATH))
+    p.add_argument("--no-structure", action="store_true", help="Ne pas extraire la structure argumentative.")
+    p.set_defaults(func=cmd_analyze)
+
+    # extract (structure argumentative : LLM ou heuristique)
+    p = sub.add_parser("extract", help="Extraire la structure argumentative (premisses/conclusions/relations).")
+    p.add_argument("--text", required=True)
+    p.add_argument("--no-llm", action="store_true", help="Forcer l'extracteur heuristique (pas d'appel LLM).")
+    p.set_defaults(func=cmd_extract)
+
+    # eval-corpus (US2016 AIF -> AF de Dung)
+    p = sub.add_parser("eval-corpus", help="Charger un corpus AIF (US2016) et l'evaluer via Dung.")
+    p.add_argument("--corpus-path", default="data/raw/us2016.json")
+    p.add_argument("--download", action="store_true", help="Telecharger le corpus s'il est absent.")
+    p.add_argument("--all-semantics", action="store_true", help="Calculer aussi stable et preferred (plus lent).")
+    p.set_defaults(func=cmd_eval_corpus)
+
+    # demo-af (semantiques de Dung sur un AF arbitraire)
+    p = sub.add_parser("demo-af", help="Calculer les extensions de Dung d'un AF.")
+    p.add_argument(
+        "--attack",
+        dest="attacks",
+        action="append",
+        type=lambda s: tuple(s.split("->", 1)),
+        default=[],
+        metavar="A->B",
+        help="Arete d'attaque, ex: --attack a->b --attack b->c (repetable).",
+    )
+    p.set_defaults(func=cmd_demo_af)
+
+    # evaluate (re-affiche les metriques depuis un CSV de predictions)
+    p = sub.add_parser("evaluate", help="Recalculer les metriques depuis un CSV de predictions.")
+    p.add_argument("--predictions-path", default=str(DEFAULT_PREDICTIONS_PATH))
+    p.set_defaults(func=cmd_evaluate)
+
+    # classify-llm (version 2 : Claude comme classifieur)
+    p = sub.add_parser("classify-llm", help="Classer le test avec Claude (necessite ANTHROPIC_API_KEY).")
+    p.add_argument("--dataset", required=True)
+    p.add_argument("--model", default=None, help="Modele Claude (defaut claude-opus-4-8).")
+    p.add_argument("--limit", type=int, default=None, help="Limiter le nombre d'exemples (cout).")
+    p.add_argument("--predictions-path", default="results/llm_predictions.csv")
+    p.add_argument("--metrics-path", default="results/llm_metrics.json")
+    p.set_defaults(func=cmd_classify_llm)
+
+    # compare (tableau cote a cote des approches)
+    p = sub.add_parser("compare", help="Comparer plusieurs metrics.json cote a cote.")
+    p.add_argument("metrics_paths", nargs="+", help="Chemins de fichiers metrics.json.")
+    p.set_defaults(func=cmd_compare)
+
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
