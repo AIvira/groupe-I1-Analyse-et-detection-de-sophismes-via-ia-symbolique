@@ -13,7 +13,7 @@ from sklearn.metrics import classification_report, confusion_matrix, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
 
-from src.domain import TrainingConfig
+from src.domain.models import TrainingConfig
 
 
 @dataclass(slots=True)

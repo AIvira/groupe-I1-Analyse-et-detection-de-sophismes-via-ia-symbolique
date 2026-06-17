@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from typing import Dict, List
 
-from src.domain import Prediction, RuleHit
+from src.domain.models import Prediction, RuleHit
 
 
 class RuleBasedFallacyDetector:

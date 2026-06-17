@@ -169,7 +169,7 @@ def train_transformer_classifier(
     seed: int = 42,
 ) -> TransformerTrainingArtifacts:
     torch, Dataset, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments = _ImportGuard.load()
-    from src.domain import TrainingConfig
+    from src.domain.models import TrainingConfig
 
     config = TrainingConfig()
     config.use_masked_text_features = use_masked_text

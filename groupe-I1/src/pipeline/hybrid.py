@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from src.domain import Prediction, TrainingConfig
+from src.domain.models import Prediction, TrainingConfig
 from src.rules.detector import RuleBasedFallacyDetector
 
 LABEL_ALIASES = {

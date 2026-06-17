@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Binaires lourds (regenerables) — modeles, JAR, poids
+models/
+lib/*.jar
+*.pkl
+*.safetensors
+*.pt
+*.pth
+*.bin
+
+# Sorties generees (rapports, predictions, metriques)
+results/
+
+# Corpus volumineux / depot source clone
+data/raw/us2016.json
+data/raw/causalNLP-repo/

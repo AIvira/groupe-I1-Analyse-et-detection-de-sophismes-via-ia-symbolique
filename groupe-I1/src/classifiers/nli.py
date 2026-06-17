@@ -242,7 +242,7 @@ def train_nli_label_matching(
     seed: int = 42,
 ) -> NLITrainingArtifacts:
     torch, Dataset, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments = _ImportGuard.load()
-    from src.domain import TrainingConfig
+    from src.domain.models import TrainingConfig
 
     config = TrainingConfig()
     config.use_masked_text_features = use_masked_text

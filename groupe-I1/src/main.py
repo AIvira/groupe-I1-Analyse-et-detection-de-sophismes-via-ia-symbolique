@@ -37,7 +37,7 @@ def _print_artifacts(artifacts) -> None:
 
 
 def cmd_train(args: argparse.Namespace) -> None:
-    from src.domain import TrainingConfig
+    from src.domain.models import TrainingConfig
     from src.classifiers.baseline import (
         train_baseline,
         write_error_examples_csv,
@@ -233,7 +233,7 @@ def cmd_classify_llm(args: argparse.Namespace) -> None:
 
     import pandas as pd
 
-    from src.domain import TrainingConfig
+    from src.domain.models import TrainingConfig
     from src.classifiers.baseline import build_split_datasets, load_dataset
     from src.classifiers.llm import LLMFallacyClassifier, llm_available
     from src.evaluation.metrics import compute_metrics, format_metrics_dict
