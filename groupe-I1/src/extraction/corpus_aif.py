@@ -23,7 +23,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List
 
-from .argmodel import ArgRelation, ArgUnit, ArgumentMap
+from src.extraction.argmodel import ArgRelation, ArgUnit, ArgumentMap
 
 US2016_JSON_URL = "http://corpora.aifdb.org/US2016/json"
 

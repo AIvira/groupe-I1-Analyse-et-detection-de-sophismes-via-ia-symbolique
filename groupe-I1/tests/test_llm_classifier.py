@@ -8,7 +8,7 @@ import pytest
 
 pytest.importorskip("pydantic")
 
-from src.llm_classifier import LABELS, LLMFallacyClassifier, _build_schema
+from src.classifiers.llm import LABELS, LLMFallacyClassifier, _build_schema
 
 
 def test_schema_constrains_to_13_labels():

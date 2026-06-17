@@ -6,8 +6,8 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from .domain import Prediction, TrainingConfig
-from .rules import RuleBasedFallacyDetector
+from src.domain import Prediction, TrainingConfig
+from src.rules.detector import RuleBasedFallacyDetector
 
 LABEL_ALIASES = {
     "ad hominem": "ad_hominem",
@@ -115,7 +115,7 @@ class HybridFallacyPipeline:
         fondee de Dung + verdict formel via le scheme argumentatif du sophisme.
         Le module `symbolic` (et donc le JVM) n'est importe qu'ici.
         """
-        from .symbolic import arbitrate, symbolic_verdict
+        from src.symbolic.dung import arbitrate, symbolic_verdict
 
         rule_prediction = self.predict_rules(text)
         rule_label = rule_prediction.label if rule_prediction.label != "not_fallacy" else None
@@ -139,7 +139,7 @@ class HybridFallacyPipeline:
 
         structure = None
         if self.extract_structure:
-            from .extraction import get_extractor
+            from src.extraction.extractor import get_extractor
 
             extractor = self._extractor or get_extractor()
             argmap = extractor.extract(text)

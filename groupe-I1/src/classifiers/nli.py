@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix, f1_score
 
-from .training import build_split_datasets, load_dataset, summarize_top_confusions
+from src.classifiers.baseline import build_split_datasets, load_dataset, summarize_top_confusions
 
 LABEL_ALIASES = {
     "ad_hominem": "ad hominem",
@@ -242,7 +242,7 @@ def train_nli_label_matching(
     seed: int = 42,
 ) -> NLITrainingArtifacts:
     torch, Dataset, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments = _ImportGuard.load()
-    from .domain import TrainingConfig
+    from src.domain import TrainingConfig
 
     config = TrainingConfig()
     config.use_masked_text_features = use_masked_text

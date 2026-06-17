@@ -21,7 +21,7 @@ import os
 import re
 from typing import List, Optional
 
-from .argmodel import ArgRelation, ArgUnit, ArgumentMap
+from src.extraction.argmodel import ArgRelation, ArgUnit, ArgumentMap
 
 # Modele Claude par defaut (surchargeable via ANTHROPIC_MODEL).
 DEFAULT_MODEL = "claude-opus-4-8"
@@ -42,7 +42,7 @@ class HeuristicArgumentExtractor:
     """Extraction par marqueurs de discours + regles de sophismes."""
 
     def __init__(self) -> None:
-        from .rules import RuleBasedFallacyDetector
+        from src.rules.detector import RuleBasedFallacyDetector
 
         self._detector = RuleBasedFallacyDetector()
 

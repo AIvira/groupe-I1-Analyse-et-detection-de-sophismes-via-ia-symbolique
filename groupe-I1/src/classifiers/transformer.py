@@ -10,7 +10,7 @@ import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix, f1_score
 from sklearn.utils.class_weight import compute_class_weight
 
-from .training import build_split_datasets, load_dataset, summarize_top_confusions
+from src.classifiers.baseline import build_split_datasets, load_dataset, summarize_top_confusions
 
 
 @dataclass(slots=True)
@@ -169,7 +169,7 @@ def train_transformer_classifier(
     seed: int = 42,
 ) -> TransformerTrainingArtifacts:
     torch, Dataset, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments = _ImportGuard.load()
-    from .domain import TrainingConfig
+    from src.domain import TrainingConfig
 
     config = TrainingConfig()
     config.use_masked_text_features = use_masked_text

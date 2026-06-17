@@ -1,4 +1,4 @@
-from src.rules import RuleBasedFallacyDetector
+from src.rules.detector import RuleBasedFallacyDetector
 
 
 def test_detect_false_dilemma() -> None:

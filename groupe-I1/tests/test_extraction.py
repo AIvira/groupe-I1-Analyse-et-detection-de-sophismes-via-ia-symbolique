@@ -2,14 +2,14 @@
 
 import pytest
 
-from src.argmodel import ArgRelation, ArgUnit, ArgumentMap
-from src.corpus_aif import attack_subgraph, load_aif
-from src.extraction import HeuristicArgumentExtractor, get_extractor
+from src.extraction.argmodel import ArgRelation, ArgUnit, ArgumentMap
+from src.extraction.corpus_aif import attack_subgraph, load_aif
+from src.extraction.extractor import HeuristicArgumentExtractor, get_extractor
 
 jpype = pytest.importorskip("jpype")
 
 try:
-    from src.symbolic import DungAF
+    from src.symbolic.dung import DungAF
 
     DungAF()
     _SYMBOLIC_OK = True

@@ -19,8 +19,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.rules import RuleBasedFallacyDetector  # noqa: E402
-from src.symbolic import arbitrate  # noqa: E402
+from src.rules.detector import RuleBasedFallacyDetector  # noqa: E402
+from src.symbolic.dung import arbitrate  # noqa: E402
 
 NONE_LABELS = ("not_fallacy", "other_fallacy")
 

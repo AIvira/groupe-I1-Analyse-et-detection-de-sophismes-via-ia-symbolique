@@ -31,20 +31,20 @@ DEFAULT_NLI_DIR = Path("models/nli")
 
 def _print_artifacts(artifacts) -> None:
     """Shared, compact console summary for any training artifacts."""
-    from src.metrics import format_metrics_console
+    from src.evaluation.metrics import format_metrics_console
 
     print(format_metrics_console(artifacts))
 
 
 def cmd_train(args: argparse.Namespace) -> None:
     from src.domain import TrainingConfig
-    from src.training import (
+    from src.classifiers.baseline import (
         train_baseline,
         write_error_examples_csv,
         write_predictions_csv,
         write_training_summary,
     )
-    from src.metrics import write_metrics_json
+    from src.evaluation.metrics import write_metrics_json
 
     config = TrainingConfig()
     artifacts = train_baseline(args.dataset, config)
@@ -67,7 +67,7 @@ def cmd_train(args: argparse.Namespace) -> None:
 
 
 def cmd_predict(args: argparse.Namespace) -> None:
-    from src.pipeline import HybridFallacyPipeline
+    from src.pipeline.hybrid import HybridFallacyPipeline
 
     model = None
     model_path = Path(args.model_path)
@@ -97,13 +97,13 @@ def cmd_predict(args: argparse.Namespace) -> None:
 
 def cmd_train_transformer(args: argparse.Namespace) -> None:
     # Heavy deps imported only here.
-    from src.transformer_training import train_transformer_classifier
-    from src.training import (
+    from src.classifiers.transformer import train_transformer_classifier
+    from src.classifiers.baseline import (
         write_error_examples_csv,
         write_predictions_csv,
         write_training_summary,
     )
-    from src.metrics import write_metrics_json
+    from src.evaluation.metrics import write_metrics_json
 
     artifacts = train_transformer_classifier(
         dataset_path=args.dataset,
@@ -122,13 +122,13 @@ def cmd_train_transformer(args: argparse.Namespace) -> None:
 
 
 def cmd_train_nli(args: argparse.Namespace) -> None:
-    from src.nli_training import train_nli_label_matching
-    from src.training import (
+    from src.classifiers.nli import train_nli_label_matching
+    from src.classifiers.baseline import (
         write_error_examples_csv,
         write_predictions_csv,
         write_training_summary,
     )
-    from src.metrics import write_metrics_json
+    from src.evaluation.metrics import write_metrics_json
 
     artifacts = train_nli_label_matching(
         dataset_path=args.dataset,
@@ -149,7 +149,7 @@ def cmd_train_nli(args: argparse.Namespace) -> None:
 
 def cmd_analyze(args: argparse.Namespace) -> None:
     """Analyse neuro-symbolique complete (neuronal + regles + Dung/Tweety)."""
-    from src.pipeline import HybridFallacyPipeline
+    from src.pipeline.hybrid import HybridFallacyPipeline
 
     model = None
     model_path = Path(args.model_path)
@@ -168,7 +168,7 @@ def cmd_analyze(args: argparse.Namespace) -> None:
 
 def cmd_extract(args: argparse.Namespace) -> None:
     """Extraire la structure argumentative d'un texte (LLM ou heuristique)."""
-    from src.extraction import get_extractor
+    from src.extraction.extractor import get_extractor
 
     extractor = get_extractor(prefer_llm=not args.no_llm)
     argmap = extractor.extract(args.text)
@@ -179,7 +179,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
 
 def cmd_eval_corpus(args: argparse.Namespace) -> None:
     """Charger un corpus AIF (US2016), projeter en AF de Dung, evaluer."""
-    from src.corpus_aif import US2016_JSON_URL, attack_subgraph, download_aif, load_aif
+    from src.extraction.corpus_aif import US2016_JSON_URL, attack_subgraph, download_aif, load_aif
 
     corpus_path = Path(args.corpus_path)
     if not corpus_path.exists():
@@ -211,7 +211,7 @@ def cmd_eval_corpus(args: argparse.Namespace) -> None:
 
 def cmd_demo_af(args: argparse.Namespace) -> None:
     """Demontre les semantiques de Dung sur un AF (TweetyProject)."""
-    from src.symbolic import DungAF
+    from src.symbolic.dung import DungAF
 
     af = DungAF()
     for src_node, tgt_node in args.attacks:
@@ -221,7 +221,7 @@ def cmd_demo_af(args: argparse.Namespace) -> None:
 
 def cmd_evaluate(args: argparse.Namespace) -> None:
     """Re-print metrics from a saved predictions CSV without retraining."""
-    from src.metrics import metrics_from_predictions_csv, format_metrics_dict
+    from src.evaluation.metrics import metrics_from_predictions_csv, format_metrics_dict
 
     metrics = metrics_from_predictions_csv(args.predictions_path)
     print(format_metrics_dict(metrics))
@@ -234,9 +234,9 @@ def cmd_classify_llm(args: argparse.Namespace) -> None:
     import pandas as pd
 
     from src.domain import TrainingConfig
-    from src.training import build_split_datasets, load_dataset
-    from src.llm_classifier import LLMFallacyClassifier, llm_available
-    from src.metrics import compute_metrics, format_metrics_dict
+    from src.classifiers.baseline import build_split_datasets, load_dataset
+    from src.classifiers.llm import LLMFallacyClassifier, llm_available
+    from src.evaluation.metrics import compute_metrics, format_metrics_dict
 
     if not llm_available():
         raise SystemExit(

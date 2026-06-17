@@ -37,7 +37,7 @@ SEMANTICS = ("grounded", "complete", "preferred", "stable", "admissible")
 
 
 def _default_jar_paths() -> List[str]:
-    lib_dir = Path(__file__).resolve().parents[1] / "lib"
+    lib_dir = Path(__file__).resolve().parents[2] / "lib"
     return sorted(str(p) for p in lib_dir.glob("*.jar"))
 
 

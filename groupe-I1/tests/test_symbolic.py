@@ -8,7 +8,7 @@ import pytest
 
 jpype = pytest.importorskip("jpype")
 
-from src.symbolic import DungAF, arbitrate, symbolic_verdict  # noqa: E402
+from src.symbolic.dung import DungAF, arbitrate, symbolic_verdict  # noqa: E402
 
 # Le JVM ne peut etre demarre qu'une fois par processus ; on saute proprement
 # s'il n'y a pas de JAR.

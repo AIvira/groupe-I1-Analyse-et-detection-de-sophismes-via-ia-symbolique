@@ -73,7 +73,7 @@ class ArgumentMap:
         servent a la lecture / a une eventuelle reduction ASPIC ulterieure).
         Import paresseux de `symbolic` pour ne pas demarrer le JVM sans raison.
         """
-        from .symbolic import DungAF
+        from src.symbolic.dung import DungAF
 
         af = DungAF()
         attack_pairs = self.attacks()
