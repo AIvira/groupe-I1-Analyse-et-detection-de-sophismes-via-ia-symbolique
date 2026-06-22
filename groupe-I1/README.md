@@ -19,9 +19,11 @@ le pipeline **neuro-symbolique** decrit par le sujet, de bout en bout :
 | Extraction d'arguments (premisses, conclusions, attaque/support) | ✅ | `src/extraction/extractor.py` — LLM via API compatible OpenAI (Ollama local `llama3.2` par defaut) + repli heuristique hors-ligne |
 | Classification des sophismes | ✅ | baseline TF-IDF / transformer / NLI + regles |
 | Validation formelle via AF de Dung (TweetyProject) | ✅ | `src/symbolic/dung.py` + `src/extraction/argmodel.py` (`to_dung`, `coherence`) |
-| Evaluation sur corpus annote (US2016) F1/P/R | ✅ | `eval-corpus` — US2016 (AIFdb) -> AF de Dung ; resultat archive dans `results/us2016_dung_eval.txt` (5293 propositions, 802 acceptes / 542 rejetes) |
-| Analyse des corrections symbolique ↔ neuronal | ✅ | commande `analyze-corrections` (archive `results/corrections_summary.json`) ; variante CSV : `scripts/evaluate_symbolic.py` |
-| Livrable demo/UI fonctionnelle | ✅ | `app.py` — UI Streamlit (texte → structure + graphe de Dung + verdict symbolique) |
+| Filtrage des faux positifs du neuronal | ✅ | cable dans `analyze()` : si la conclusion attaquee est reinstauree dans l'AF extrait, la question critique est "repondue" -> verdict `valide` (`false_positive_filtered`) |
+| Classification F1/precision/rappel (corpus annote) | ✅ | `metrics.py` sur causalNLP : macro/micro/weighted + par-classe (`results/full_metrics.json`) |
+| Corpus argument-mining annotes (US2016 **et** ArgMine) -> Dung | ✅ | `eval-corpus --corpus-name US2016\|ArgMine --download` ; archives `results/us2016_dung_eval.txt` (5293 prop, 802/542) et `results/argmine_dung_eval.txt` (720 prop, 22/19) |
+| Analyse corrections symbolique → neuronal **et inversement** | ✅ | `analyze-corrections` : sens 1 (symbolique corrige ML) + sens 2 (ML corrige regles), avec exemples ; archive `results/corrections_summary.json` |
+| Livrable demo/UI fonctionnelle | ✅ | `app.py` — UI Streamlit (texte → structure + graphe de Dung + verdict + faux positif filtre) |
 
 ## Objectif
 
@@ -274,28 +276,39 @@ des supports. On obtient un **vrai** framework d'argumentation extrait d'un
 corpus annote, evalue par TweetyProject.
 
 ```bash
-python3 -m src.main eval-corpus --download --all-semantics
-# US2016 : 5293 propositions (premisses=2611, conclusions=2072), 889 attaques, 3379 supports
-#   grounded/stable/preferred : 802 arguments acceptes, 542 rejetes (coherent)
-#   resultat archive : results/us2016_dung_eval.txt
+# Deux corpus annotes interchangeables (--corpus-name) :
+python3 -m src.main eval-corpus --corpus-name US2016 --download --all-semantics
+#   US2016 : 5293 propositions, 889 attaques, 3379 supports -> 802 acceptes / 542 rejetes
+#   archive : results/us2016_dung_eval.txt
+python3 -m src.main eval-corpus --corpus-name ArgMine --download --all-semantics
+#   ArgMine : 720 propositions, 28 attaques, 498 supports -> 22 acceptes / 19 rejetes
+#   archive : results/argmine_dung_eval.txt
 ```
 
-**Apport du symbolique sur le classifieur (objectif I1).** La commande
-`analyze-corrections` rejoue le pipeline sur le jeu de test et compare, ligne a
-ligne, l'etiquette du **ML seul** a l'etiquette **hybride** (apres arbitrage
-regle/ML par la semantique fondee de Dung), face au gold.
+> Note metriques : F1/precision/rappel sont produits sur le corpus annote de
+> sophismes **causalNLP** (`results/full_metrics.json`, macro/micro/weighted +
+> par-classe). US2016 et ArgMine sont des corpus d'argument-mining (sans label
+> de sophisme) : ils servent a valider **structurellement** la couche de Dung.
+
+**Apport du symbolique sur le classifieur (objectif I1, les deux sens).** La
+commande `analyze-corrections` rejoue le pipeline sur le test et compare, ligne a
+ligne, **ML seul**, **regles seules** et **hybride** (apres arbitrage Dung), face
+au gold.
 
 ```bash
 python3 -m src.main analyze-corrections --dataset data/processed/fallacies_full.csv --progress
-# 511 exemples : accuracy ML 0.3894 -> hybride 0.3914 (+0.0020)
-#   6 desaccords regle/ML, 1 etiquette modifiee : 1 erreur ML corrigee, 0 regression
-#   ex. gold=ad_hominem, ml=straw_man -> final=ad_hominem (regle ad_hominem confiante)
+# 511 exemples : ML 0.3894 | regles 0.0333 | hybride 0.3914 (+0.0020 vs ML)
+#   Sens 1 (symbolique corrige neuronal) : 1 correction, 0 regression
+#     ex. gold=ad_hominem, ml=straw_man -> final=ad_hominem (regle ad_hominem confiante)
+#   Sens 2 (neuronal corrige symbolique) : 1 correction
+#     ex. gold=ad_hominem, regle=ad_populum -> final=ad_hominem (ml ad_hominem)
 #   resultats : results/corrections_summary.json + results/corrections_detail.csv
 ```
 
 > Lecture : l'arbitrage symbolique est **conservateur et haute precision** — il
 > n'intervient que sur des desaccords ou une regle explicite est tres confiante
-> (seuil 0.9), et dans ce cas il a corrige le ML sans jamais le degrader (1/1).
+> (seuil 0.9), et dans ce cas il a corrige le ML sans le degrader (1/1). Le sens
+> inverse (le ML corrige une regle trompeuse) est lui aussi observe.
 
 ## Resultats & metriques
 

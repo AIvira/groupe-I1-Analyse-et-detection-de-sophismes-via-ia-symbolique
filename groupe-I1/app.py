@@ -177,6 +177,12 @@ if st.button("Analyser", type="primary") and text.strip():
     col2.metric("Decide par", result["decided_by"])
     status = verdict["status"]
     col3.metric("Verdict symbolique", "🔴 fallacieux" if status == "fallacieux" else "🟢 valide")
+    if verdict.get("false_positive_filtered"):
+        st.success(
+            "✅ **Faux positif filtre par le symbolique** : le neuronal a detecte un "
+            "sophisme, mais la conclusion est reinstauree dans l'AF de Dung "
+            "(la question critique du scheme est repondue)."
+        )
 
     # --- Structure argumentative + graphe de Dung --------------------------
     st.divider()

@@ -50,6 +50,24 @@ def test_argmap_coherence_rejects_attacked_conclusion():
     assert "c" in coh["rejected"]
 
 
+def test_critical_question_answered_on_reinstatement():
+    """Le filtrage de faux positif s'active quand une conclusion attaquee est
+    reinstauree dans l'extension fondee (la question critique est repondue)."""
+    from src.pipeline.hybrid import HybridFallacyPipeline as P
+
+    reinstated = {
+        "units": [{"id": "c", "role": "conclusion"}],
+        "coherence": {"accepted": ["c", "d"], "attacks": [("d", "o"), ("o", "c")]},
+    }
+    defeated = {
+        "units": [{"id": "c", "role": "conclusion"}],
+        "coherence": {"accepted": ["o"], "attacks": [("o", "c")]},
+    }
+    assert P._critical_question_answered(reinstated) is True
+    assert P._critical_question_answered(defeated) is False
+    assert P._critical_question_answered(None) is False
+
+
 # Fixture AIF synthetique (pas de reseau) : a -CA-> b, p -RA-> b
 _AIF = {
     "nodes": [

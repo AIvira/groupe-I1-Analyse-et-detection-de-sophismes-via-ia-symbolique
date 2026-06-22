@@ -135,8 +135,10 @@ class HybridFallacyPipeline:
             rule_confidence=rule_conf,
         )
         final_label = arbitration["final_label"]
-        verdict = symbolic_verdict(final_label)
 
+        # On extrait d'abord la structure : son AF de Dung sert a decider si la
+        # question critique du scheme est "repondue" (objection a la conclusion
+        # reinstauree) -> le symbolique filtre alors un faux positif du neuronal.
         structure = None
         if self.extract_structure:
             from src.extraction.extractor import get_extractor
@@ -150,6 +152,14 @@ class HybridFallacyPipeline:
                 "fallacies": dict(argmap.fallacies),
                 "coherence": argmap.coherence("grounded"),
             }
+
+        cq_answered = self._critical_question_answered(structure)
+        verdict = symbolic_verdict(final_label, critical_question_answered=cq_answered)
+        # Faux positif filtre : le neuronal/regles a detecte un sophisme mais la
+        # structure argumentative resiste a son objection (conclusion reinstauree).
+        false_positive_filtered = (
+            final_label not in ("not_fallacy", "other_fallacy") and verdict.claim_accepted
+        )
 
         return {
             "text": text,
@@ -172,10 +182,36 @@ class HybridFallacyPipeline:
                 "critical_question": verdict.critical_question,
                 "status": verdict.status,
                 "claim_accepted": verdict.claim_accepted,
+                "critical_question_answered": cq_answered,
+                "false_positive_filtered": false_positive_filtered,
                 "grounded_extension": verdict.grounded_extension,
                 "explanation": verdict.explanation,
             },
         }
+
+    @staticmethod
+    def _critical_question_answered(structure: Optional[Dict[str, object]]) -> bool:
+        """La question critique est-elle "repondue" par la structure extraite ?
+
+        Critere formel : il existe une **objection** (attaque) visant une
+        conclusion/these, mais cette conclusion reste **acceptee dans l'extension
+        fondee** de l'AF extrait (elle a ete reinstauree par un contre-argument).
+        Autrement dit, l'argument resiste a son objection => le sophisme detecte
+        par le neuronal est tenu pour un faux positif.
+        """
+        if not structure:
+            return False
+        coherence = structure.get("coherence", {}) or {}
+        accepted = set(coherence.get("accepted", []))
+        roles = {u["id"]: u.get("role") for u in structure.get("units", [])}
+        for attack in coherence.get("attacks", []):
+            # `attacks` est une liste de paires (source, cible).
+            if not isinstance(attack, (list, tuple)) or len(attack) != 2:
+                continue
+            target = attack[1]
+            if roles.get(target) in ("conclusion", "claim") and target in accepted:
+                return True
+        return False
 
     def predict_hybrid(self, text: str) -> Prediction:
         rule_prediction = self.predict_rules(text)

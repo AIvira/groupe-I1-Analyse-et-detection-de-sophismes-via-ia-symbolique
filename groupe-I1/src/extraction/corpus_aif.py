@@ -28,6 +28,11 @@ from src.extraction.argmodel import ArgRelation, ArgUnit, ArgumentMap
 US2016_JSON_URL = "http://corpora.aifdb.org/US2016/json"
 
 
+def aifdb_url(corpus_name: str) -> str:
+    """URL JSON d'un corpus AIFdb a partir de son nom (ex. 'US2016', 'ArgMine')."""
+    return f"http://corpora.aifdb.org/{corpus_name}/json"
+
+
 def download_aif(url: str, dest: str, timeout: int = 60) -> str:
     path = Path(dest)
     path.parent.mkdir(parents=True, exist_ok=True)

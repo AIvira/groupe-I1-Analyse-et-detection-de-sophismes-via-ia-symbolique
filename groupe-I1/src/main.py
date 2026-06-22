@@ -215,16 +215,19 @@ def cmd_analyze_corrections(args: argparse.Namespace) -> None:
             rule_confidence=rule_conf,
         )
         n_disagree += int(bool(arb["disagreement"]))
+        rule_only = rule_label or "not_fallacy"
         rows.append(
             {
                 "text": text,
                 "gold": y,
                 "ml_label": ml.label,
                 "rule_label": rule_label or "",
+                "rule_only_label": rule_only,
                 "final_label": arb["final_label"],
                 "winner": arb["winner"],
                 "changed": arb["final_label"] != ml.label,
                 "ml_correct": ml.label == y,
+                "rule_correct": rule_only == y,
                 "hybrid_correct": arb["final_label"] == y,
             }
         )
@@ -235,22 +238,33 @@ def cmd_analyze_corrections(args: argparse.Namespace) -> None:
 
     n = len(rows)
     changed = [r for r in rows if r["changed"]]
+    # Sens 1 : le symbolique (arbitrage regle/Dung) corrige le neuronal/ML.
     corrected = [r for r in changed if not r["ml_correct"] and r["hybrid_correct"]]
     regressed = [r for r in changed if r["ml_correct"] and not r["hybrid_correct"]]
     neutral = [r for r in changed if r not in corrected and r not in regressed]
+    # Sens 2 (inversement) : le neuronal corrige la couche symbolique/regles,
+    # i.e. la regle proposait une etiquette fausse mais l'hybride retient le ML correct.
+    neural_fixes_rule = [
+        r for r in rows
+        if r["rule_label"] and not r["rule_correct"] and r["hybrid_correct"]
+        and r["final_label"] != r["rule_only_label"]
+    ]
     ml_acc = sum(r["ml_correct"] for r in rows) / n if n else 0.0
+    rule_acc = sum(r["rule_correct"] for r in rows) / n if n else 0.0
     hyb_acc = sum(r["hybrid_correct"] for r in rows) / n if n else 0.0
 
     summary = {
         "n_test": n,
         "ml_only_accuracy": round(ml_acc, 4),
+        "rule_only_accuracy": round(rule_acc, 4),
         "hybrid_accuracy": round(hyb_acc, 4),
-        "accuracy_delta": round(hyb_acc - ml_acc, 4),
+        "accuracy_delta_vs_ml": round(hyb_acc - ml_acc, 4),
         "disagreements_rule_vs_ml": n_disagree,
         "labels_changed_by_symbolic": len(changed),
-        "symbolic_corrected_ml_errors": len(corrected),
+        "symbolic_corrects_neural": len(corrected),
         "symbolic_regressed": len(regressed),
         "symbolic_changed_but_neutral": len(neutral),
+        "neural_corrects_symbolic": len(neural_fixes_rule),
     }
 
     out_csv = Path(args.output_csv)
@@ -262,24 +276,31 @@ def cmd_analyze_corrections(args: argparse.Namespace) -> None:
     )
 
     print("=" * 64)
-    print("  EFFET DE LA COUCHE SYMBOLIQUE SUR LE CLASSIFIEUR (jeu de test)")
+    print("  INTERACTIONS SYMBOLIQUE <-> NEURONAL (jeu de test)")
     print("=" * 64)
     print(f"  exemples de test                : {summary['n_test']}")
     print(f"  accuracy ML seul                : {summary['ml_only_accuracy']:.4f}")
+    print(f"  accuracy regles seules          : {summary['rule_only_accuracy']:.4f}")
     print(f"  accuracy hybride (apres Dung)   : {summary['hybrid_accuracy']:.4f}")
-    print(f"  delta                           : {summary['accuracy_delta']:+.4f}")
+    print(f"  delta hybride vs ML             : {summary['accuracy_delta_vs_ml']:+.4f}")
     print("-" * 64)
     print(f"  desaccords regle vs ML          : {summary['disagreements_rule_vs_ml']}")
-    print(f"  etiquettes modifiees (symbolique): {summary['labels_changed_by_symbolic']}")
-    print(f"    -> erreurs ML corrigees       : {summary['symbolic_corrected_ml_errors']}")
+    print(f"  Sens 1 — le symbolique corrige le neuronal : {summary['symbolic_corrects_neural']}")
     print(f"    -> regressions introduites    : {summary['symbolic_regressed']}")
     print(f"    -> changements neutres        : {summary['symbolic_changed_but_neutral']}")
+    print(f"  Sens 2 — le neuronal corrige le symbolique : {summary['neural_corrects_symbolic']}")
     print("=" * 64)
     if corrected:
-        print("\n  Exemples ou le symbolique CORRIGE le ML :")
+        print("\n  Exemples ou le SYMBOLIQUE corrige le neuronal :")
         for r in corrected[: args.examples]:
             print(f"   - gold={r['gold']} | ml={r['ml_label']} -> final={r['final_label']} "
                   f"(regle={r['rule_label']})")
+            print(f"     « {r['text'][:90]} »")
+    if neural_fixes_rule:
+        print("\n  Exemples ou le NEURONAL corrige le symbolique :")
+        for r in neural_fixes_rule[: args.examples]:
+            print(f"   - gold={r['gold']} | regle={r['rule_only_label']} -> final={r['final_label']} "
+                  f"(ml={r['ml_label']})")
             print(f"     « {r['text'][:90]} »")
     print(f"\nDetail par exemple : {out_csv}")
     print(f"Synthese (JSON)    : {args.output_json}")
@@ -297,14 +318,17 @@ def cmd_extract(args: argparse.Namespace) -> None:
 
 
 def cmd_eval_corpus(args: argparse.Namespace) -> None:
-    """Charger un corpus AIF (US2016), projeter en AF de Dung, evaluer."""
-    from src.extraction.corpus_aif import US2016_JSON_URL, attack_subgraph, download_aif, load_aif
+    """Charger un corpus AIF annote (US2016, ArgMine...), projeter en AF de Dung, evaluer."""
+    from src.extraction.corpus_aif import aifdb_url, attack_subgraph, download_aif, load_aif
 
-    corpus_path = Path(args.corpus_path)
+    corpus_path = Path(args.corpus_path) if args.corpus_path else Path(
+        f"data/raw/{args.corpus_name.lower()}.json"
+    )
     if not corpus_path.exists():
         if args.download:
-            print(f"[eval-corpus] telechargement {US2016_JSON_URL} ...")
-            download_aif(US2016_JSON_URL, str(corpus_path))
+            url = aifdb_url(args.corpus_name)
+            print(f"[eval-corpus] telechargement {url} ...")
+            download_aif(url, str(corpus_path))
         else:
             raise SystemExit(
                 f"Corpus introuvable: {corpus_path}. Relancer avec --download "
@@ -314,7 +338,7 @@ def cmd_eval_corpus(args: argparse.Namespace) -> None:
     amap = load_aif(str(corpus_path))
     sub = attack_subgraph(amap)
     print("=" * 56)
-    print("  CORPUS AIF -> AF de Dung (TweetyProject)")
+    print(f"  CORPUS AIF '{args.corpus_name}' -> AF de Dung (TweetyProject)")
     print("=" * 56)
     print(amap.summary())
     print(f"sous-graphe d'attaques : {len(sub.units)} arguments, {len(sub.attacks())} attaques")
@@ -457,9 +481,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--progress", action="store_true", help="Afficher la progression.")
     p.set_defaults(func=cmd_analyze_corrections)
 
-    # eval-corpus (US2016 AIF -> AF de Dung)
-    p = sub.add_parser("eval-corpus", help="Charger un corpus AIF (US2016) et l'evaluer via Dung.")
-    p.add_argument("--corpus-path", default="data/raw/us2016.json")
+    # eval-corpus (corpus AIF annote -> AF de Dung)
+    p = sub.add_parser("eval-corpus", help="Charger un corpus AIF annote (US2016, ArgMine...) et l'evaluer via Dung.")
+    p.add_argument("--corpus-name", default="US2016", help="Nom du corpus AIFdb (ex. US2016, ArgMine).")
+    p.add_argument("--corpus-path", default=None, help="Chemin local (sinon data/raw/<nom>.json).")
     p.add_argument("--download", action="store_true", help="Telecharger le corpus s'il est absent.")
     p.add_argument("--all-semantics", action="store_true", help="Calculer aussi stable et preferred (plus lent).")
     p.set_defaults(func=cmd_eval_corpus)
