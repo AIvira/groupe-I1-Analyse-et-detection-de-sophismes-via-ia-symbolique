@@ -5,8 +5,8 @@ argumentatifs (premisses, conclusions, relations d'attaque/support, types de
 sophismes). Cette etape alimente la couche symbolique (projection en AF de
 Dung). On fournit :
 
-- `LLMArgumentExtractor` : extraction via Claude (SDK Anthropic), sortie
-  structuree (JSON valide via `messages.parse` + schema Pydantic).
+- `LLMArgumentExtractor` : extraction via OpenAI (SDK openai), sortie
+  structuree (JSON valide via `chat.completions.parse` + schema Pydantic).
 - `HeuristicArgumentExtractor` : repli deterministe hors-ligne base sur les
   marqueurs de discours (« because », « therefore », « but »...) + les regles
   lexicales de sophismes. Permet de faire tourner et tester tout le pipeline
@@ -23,8 +23,8 @@ from typing import List, Optional
 
 from src.extraction.argmodel import ArgRelation, ArgUnit, ArgumentMap
 
-# Modele Claude par defaut (surchargeable via ANTHROPIC_MODEL).
-DEFAULT_MODEL = "claude-opus-4-8"
+# Modele OpenAI par defaut (surchargeable via OPENAI_MODEL).
+DEFAULT_MODEL = "gpt-4o"
 
 # Marqueurs de discours pour le repli heuristique.
 _CONCLUSION_MARKERS = re.compile(
@@ -102,7 +102,7 @@ class HeuristicArgumentExtractor:
 
 
 # ---------------------------------------------------------------------------
-# Extraction LLM (Claude / SDK Anthropic)
+# Extraction LLM (OpenAI / SDK openai)
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = (
@@ -144,25 +144,27 @@ def _build_schema():
 
 
 class LLMArgumentExtractor:
-    """Extraction via Claude avec sortie structuree (JSON valide)."""
+    """Extraction via OpenAI avec sortie structuree (JSON valide)."""
 
     def __init__(self, model: Optional[str] = None, max_tokens: int = 2048) -> None:
-        import anthropic  # import paresseux
+        from openai import OpenAI  # import paresseux
 
-        self._client = anthropic.Anthropic()  # lit ANTHROPIC_API_KEY de l'env
-        self._model = model or os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL)
+        self._client = OpenAI()  # lit OPENAI_API_KEY de l'env
+        self._model = model or os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
         self._max_tokens = max_tokens
         self._schema = _build_schema()
 
     def extract(self, text: str) -> ArgumentMap:
-        response = self._client.messages.parse(
+        response = self._client.chat.completions.parse(
             model=self._model,
-            max_tokens=self._max_tokens,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": text}],
-            output_format=self._schema,
+            max_completion_tokens=self._max_tokens,
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": text},
+            ],
+            response_format=self._schema,
         )
-        parsed = response.parsed_output
+        parsed = response.choices[0].message.parsed
         amap = ArgumentMap(meta={"extractor": "llm", "model": self._model, "raw_text": text})
         for u in parsed.units:
             amap.add_unit(ArgUnit(id=u.id, text=u.text, role=u.role))
@@ -178,8 +180,8 @@ class LLMArgumentExtractor:
 def llm_available() -> bool:
     import importlib.util
 
-    return bool(os.environ.get("ANTHROPIC_API_KEY")) and (
-        importlib.util.find_spec("anthropic") is not None
+    return bool(os.environ.get("OPENAI_API_KEY")) and (
+        importlib.util.find_spec("openai") is not None
     )
 
 

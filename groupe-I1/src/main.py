@@ -228,7 +228,7 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
 
 
 def cmd_classify_llm(args: argparse.Namespace) -> None:
-    """Classer le test avec Claude (version 2) et ecrire predictions + metriques."""
+    """Classer le test avec OpenAI (version 2) et ecrire predictions + metriques."""
     import json as _json
 
     import pandas as pd
@@ -240,7 +240,7 @@ def cmd_classify_llm(args: argparse.Namespace) -> None:
 
     if not llm_available():
         raise SystemExit(
-            "Classifieur LLM indisponible : exporter ANTHROPIC_API_KEY et installer `anthropic`."
+            "Classifieur LLM indisponible : exporter OPENAI_API_KEY et installer `openai`."
         )
 
     config = TrainingConfig()
@@ -265,7 +265,7 @@ def cmd_classify_llm(args: argparse.Namespace) -> None:
     out.to_csv(args.predictions_path, index=False)
 
     metrics = compute_metrics(y_true, y_pred)
-    payload = {"model_name": f"llm:{args.model or 'claude-opus-4-8'}", "test_metrics": metrics}
+    payload = {"model_name": f"llm:{args.model or 'gpt-4o'}", "test_metrics": metrics}
     Path(args.metrics_path).parent.mkdir(parents=True, exist_ok=True)
     Path(args.metrics_path).write_text(_json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -396,10 +396,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--predictions-path", default=str(DEFAULT_PREDICTIONS_PATH))
     p.set_defaults(func=cmd_evaluate)
 
-    # classify-llm (version 2 : Claude comme classifieur)
-    p = sub.add_parser("classify-llm", help="Classer le test avec Claude (necessite ANTHROPIC_API_KEY).")
+    # classify-llm (version 2 : OpenAI comme classifieur)
+    p = sub.add_parser("classify-llm", help="Classer le test avec OpenAI (necessite OPENAI_API_KEY).")
     p.add_argument("--dataset", required=True)
-    p.add_argument("--model", default=None, help="Modele Claude (defaut claude-opus-4-8).")
+    p.add_argument("--model", default=None, help="Modele OpenAI (defaut gpt-4o).")
     p.add_argument("--limit", type=int, default=None, help="Limiter le nombre d'exemples (cout).")
     p.add_argument("--predictions-path", default="results/llm_predictions.csv")
     p.add_argument("--metrics-path", default="results/llm_metrics.json")

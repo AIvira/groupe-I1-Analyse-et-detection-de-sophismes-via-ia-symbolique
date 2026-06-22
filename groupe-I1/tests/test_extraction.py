@@ -31,7 +31,7 @@ def test_heuristic_extractor_finds_units_and_fallacy():
 
 
 def test_get_extractor_falls_back_to_heuristic_without_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     assert isinstance(get_extractor(), HeuristicArgumentExtractor)
 
 

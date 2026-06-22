@@ -1,13 +1,14 @@
-"""Classifieur de sophismes par LLM (Claude) — la "version 2".
+"""Classifieur de sophismes par LLM (OpenAI) — la "version 2".
 
 But pedagogique pour la soutenance : comparer une approche **LLM zero/few-shot**
-(Claude) a nos classifieurs **statistiques** (TF-IDF, transformer fine-tune) sur
+(OpenAI) a nos classifieurs **statistiques** (TF-IDF, transformer fine-tune) sur
 exactement le meme split de test. Le LLM gere la variabilite linguistique et les
 classes semantiquement diffuses (ex. `intentional`) la ou un sac-de-mots echoue.
 
-Sortie structuree (un label parmi les 13) via `messages.parse` + schema. Le
-prompt systeme (definitions des labels) est mis en cache pour reduire le cout
-sur tout le jeu de test. Le client Anthropic est injectable pour les tests.
+Sortie structuree (un label parmi les 13) via `chat.completions.parse` + schema
+Pydantic. OpenAI met automatiquement en cache le prefixe systeme (definitions des
+labels), ce qui reduit le cout sur tout le jeu de test. Le client OpenAI est
+injectable pour les tests.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ FALLACY_DEFINITIONS: Dict[str, str] = {
 }
 
 LABELS: List[str] = list(FALLACY_DEFINITIONS)
-DEFAULT_MODEL = "claude-opus-4-8"
+DEFAULT_MODEL = "gpt-4o"
 
 
 def _system_prompt() -> str:
@@ -61,7 +62,7 @@ def _build_schema():
 
 
 class LLMFallacyClassifier:
-    """Classement zero-shot des sophismes par Claude (sortie structuree)."""
+    """Classement zero-shot des sophismes par OpenAI (sortie structuree)."""
 
     def __init__(
         self,
@@ -71,30 +72,29 @@ class LLMFallacyClassifier:
         cache_system: bool = True,
     ) -> None:
         if client is None:
-            import anthropic
+            from openai import OpenAI
 
-            client = anthropic.Anthropic()  # lit ANTHROPIC_API_KEY
+            client = OpenAI()  # lit OPENAI_API_KEY
         self._client = client
-        self._model = model or os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL)
+        self._model = model or os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
         self._max_tokens = max_tokens
         self._schema = _build_schema()
-        if cache_system:
-            self._system = [
-                {"type": "text", "text": _system_prompt(), "cache_control": {"type": "ephemeral"}}
-            ]
-        else:
-            self._system = _system_prompt()
+        # OpenAI met en cache automatiquement le prefixe systeme : on garde une
+        # simple chaine (le parametre `cache_system` est conserve pour compat).
+        self._system = _system_prompt()
 
     def classify(self, text: str) -> Tuple[str, str]:
         """Renvoie (label, justification) pour un texte."""
-        response = self._client.messages.parse(
+        response = self._client.chat.completions.parse(
             model=self._model,
-            max_tokens=self._max_tokens,
-            system=self._system,
-            messages=[{"role": "user", "content": text}],
-            output_format=self._schema,
+            max_completion_tokens=self._max_tokens,
+            messages=[
+                {"role": "system", "content": self._system},
+                {"role": "user", "content": text},
+            ],
+            response_format=self._schema,
         )
-        parsed = response.parsed_output
+        parsed = response.choices[0].message.parsed
         return parsed.label, parsed.rationale
 
     def classify_many(self, texts: List[str], on_progress=None) -> List[str]:
@@ -113,6 +113,6 @@ class LLMFallacyClassifier:
 def llm_available() -> bool:
     import importlib.util
 
-    return bool(os.environ.get("ANTHROPIC_API_KEY")) and (
-        importlib.util.find_spec("anthropic") is not None
+    return bool(os.environ.get("OPENAI_API_KEY")) and (
+        importlib.util.find_spec("openai") is not None
     )

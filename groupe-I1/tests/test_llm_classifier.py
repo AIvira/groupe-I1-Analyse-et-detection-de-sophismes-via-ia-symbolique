@@ -1,7 +1,8 @@
-"""Tests du classifieur LLM (version 2) avec un client Anthropic mocke.
+"""Tests du classifieur LLM (version 2) avec un client OpenAI mocke.
 
-Pas d'appel reseau : on injecte un faux client qui imite `messages.parse`.
-Valide le schema (enum 13 labels) et le flux classify / classify_many.
+Pas d'appel reseau : on injecte un faux client qui imite
+`chat.completions.parse`. Valide le schema (enum 13 labels) et le flux
+classify / classify_many.
 """
 
 import pytest
@@ -24,20 +25,32 @@ class _Parsed:
         self.rationale = "test rationale"
 
 
+class _Message:
+    def __init__(self, label):
+        self.parsed = _Parsed(label)
+
+
+class _Choice:
+    def __init__(self, label):
+        self.message = _Message(label)
+
+
 class _Resp:
     def __init__(self, label):
-        self.parsed_output = _Parsed(label)
+        self.choices = [_Choice(label)]
 
 
-class _MockMessages:
+class _MockCompletions:
     def parse(self, **kwargs):
-        text = kwargs["messages"][0]["content"].lower()
+        # messages[0] = system, messages[1] = user
+        text = kwargs["messages"][1]["content"].lower()
         label = "false_dilemma" if "either" in text else "ad_hominem"
         return _Resp(label)
 
 
 class _MockClient:
-    messages = _MockMessages()
+    class chat:
+        completions = _MockCompletions()
 
 
 def test_classify_returns_label_and_rationale():
@@ -55,10 +68,11 @@ def test_classify_many_preserves_order():
 
 def test_classify_many_robust_to_errors():
     class _Boom:
-        class messages:
-            @staticmethod
-            def parse(**kwargs):
-                raise RuntimeError("network down")
+        class chat:
+            class completions:
+                @staticmethod
+                def parse(**kwargs):
+                    raise RuntimeError("network down")
 
     clf = LLMFallacyClassifier(client=_Boom())
     # repli neutre 'intentional' au lieu de planter

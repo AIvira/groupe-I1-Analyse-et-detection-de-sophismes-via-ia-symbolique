@@ -3,7 +3,7 @@
 Ce sous-projet implemente `I1 — Analyse et detection de sophismes par apprentissage symbolique` :
 le pipeline **neuro-symbolique** decrit par le sujet, de bout en bout :
 
-1. un **LLM** (Claude) extrait la structure argumentative d'un texte — premisses,
+1. un **LLM** (OpenAI) extrait la structure argumentative d'un texte — premisses,
    conclusions, relations d'attaque/support, types de sophismes ;
 2. **TweetyProject** projette cette structure dans un **framework d'argumentation de
    Dung** et calcule l'acceptabilite des arguments (extensions grounded / preferred /
@@ -16,7 +16,7 @@ le pipeline **neuro-symbolique** decrit par le sujet, de bout en bout :
 
 | Objectif du sujet | Etat | Realisation |
 |---|---|---|
-| Extraction d'arguments (premisses, conclusions, attaque/support) | ✅ | `src/extraction.py` — LLM Claude (sortie structuree) + repli heuristique hors-ligne |
+| Extraction d'arguments (premisses, conclusions, attaque/support) | ✅ | `src/extraction.py` — LLM OpenAI (sortie structuree) + repli heuristique hors-ligne |
 | Classification des sophismes | ✅ | baseline TF-IDF / transformer / NLI + regles |
 | Validation formelle via AF de Dung (TweetyProject) | ✅ | `src/symbolic.py` + `src/argmodel.py` (`to_dung`, `coherence`) |
 | Evaluation sur corpus annote (US2016, ArgMine) F1/P/R | ✅ | `src/corpus_aif.py` — US2016 (AIFdb) -> AF de Dung |
@@ -62,8 +62,8 @@ Le MVP cible d'abord les labels suivants :
 - `src/training.py` : baseline supervisee TF-IDF (rapide, sans torch)
 - `src/transformer_training.py` / `src/nli_training.py` : pipelines transformer & NLI (torch, charges a la demande)
 - `src/metrics.py` : metriques unifiees (accuracy, balanced acc, macro/micro/weighted F1, par-classe) + dashboard console et JSON
-- `src/extraction.py` : **extraction d'arguments** — LLM Claude (`messages.parse` + schema) + repli heuristique hors-ligne
-- `src/llm_classifier.py` : **classifieur LLM** (version 2) — Claude classe les sophismes, pour comparaison avec le ML
+- `src/extraction.py` : **extraction d'arguments** — LLM OpenAI (`chat.completions.parse` + schema) + repli heuristique hors-ligne
+- `src/llm_classifier.py` : **classifieur LLM** (version 2) — OpenAI classe les sophismes, pour comparaison avec le ML
 - `src/argmodel.py` : modele de carte argumentative (`ArgUnit`/`ArgRelation`/`ArgumentMap`) + projection `to_dung()`
 - `src/corpus_aif.py` : chargement de corpus AIF (US2016) -> `ArgumentMap` -> AF de Dung
 - `src/symbolic.py` : **couche symbolique** — AF de Dung via TweetyProject (JPype), schemes argumentatifs, arbitrage
@@ -109,13 +109,13 @@ python3 -m src.main predict --text "Either you support this law or you hate free
 # Analyse neuro-symbolique complete (extraction + neuronal + regles + Dung/Tweety)
 python3 -m src.main analyze --text "Either you support this law or you hate freedom."
 
-# Extraire la structure argumentative (LLM si ANTHROPIC_API_KEY, sinon heuristique)
+# Extraire la structure argumentative (LLM si OPENAI_API_KEY, sinon heuristique)
 python3 -m src.main extract --text "We must ban it because everyone knows it is bad, but they deny it."
 
 # Evaluer un corpus annote d'argument mining (US2016) via les AF de Dung
 python3 -m src.main eval-corpus --download --all-semantics
 
-# Version 2 : Claude comme classifieur, puis comparaison cote a cote
+# Version 2 : OpenAI comme classifieur, puis comparaison cote a cote
 python3 -m src.main classify-llm --dataset data/processed/fallacies_full.csv --limit 100
 python3 -m src.main compare results/full_metrics.json results/llm_metrics.json
 
@@ -228,15 +228,15 @@ python3 scripts/evaluate_symbolic.py --predictions results/full_pred.csv
 ## Extraction d'arguments (LLM) & corpus US2016
 
 **Extraction.** `src/extraction.py` transforme un texte en carte argumentative
-(`ArgumentMap`). Avec une cle API Anthropic, l'extraction est faite par Claude
-(`messages.parse` + schema Pydantic, modele `claude-opus-4-8` par defaut,
-surchargeable via `ANTHROPIC_MODEL`). Sans cle, un **repli heuristique
+(`ArgumentMap`). Avec une cle API OpenAI, l'extraction est faite par OpenAI
+(`chat.completions.parse` + schema Pydantic, modele `gpt-4o` par defaut,
+surchargeable via `OPENAI_MODEL`). Sans cle, un **repli heuristique
 deterministe** (marqueurs de discours « because / therefore / but » + regles de
 sophismes) prend le relais, ce qui rend tout le pipeline executable et testable
 hors-ligne.
 
 ```bash
-# Avec LLM : export ANTHROPIC_API_KEY=...  (sinon repli heuristique automatique)
+# Avec LLM : export OPENAI_API_KEY=...  (sinon repli heuristique automatique)
 python3 -m src.main extract --text "We must ban this app because everyone knows it spies, but the firm denies it."
 ```
 
@@ -256,10 +256,10 @@ python3 -m src.main eval-corpus --download --all-semantics
 #   grounded/stable/preferred : 802 arguments acceptes, 542 rejetes
 ```
 
-## Version 2 — Claude comme classifieur (comparaison pedagogique)
+## Version 2 — OpenAI comme classifieur (comparaison pedagogique)
 
 `src/llm_classifier.py` ajoute un **classifieur LLM** (`LLMFallacyClassifier`) :
-Claude classe directement chaque texte dans l'un des 13 sophismes (sortie
+OpenAI classe directement chaque texte dans l'un des 13 sophismes (sortie
 structuree contrainte a un `enum`, prompt systeme des definitions mis en cache).
 But : comparer, pour la soutenance, une approche **LLM zero-shot** a nos
 classifieurs **statistiques** (TF-IDF, transformer) sur le meme split de test —
@@ -267,8 +267,8 @@ notamment sur les classes semantiquement diffuses (ex. `intentional`) ou un
 sac-de-mots plafonne.
 
 ```bash
-export ANTHROPIC_API_KEY=...
-# Classer le test avec Claude (--limit pour borner le cout)
+export OPENAI_API_KEY=...
+# Classer le test avec OpenAI (--limit pour borner le cout)
 python3 -m src.main classify-llm --dataset data/processed/fallacies_full.csv --limit 100
 
 # Comparer toutes les approches cote a cote
@@ -279,7 +279,7 @@ Exemple de sortie `compare` :
 
 ```
   modele                                 n  accuracy   macroF1   bal.acc
-  llm:claude-opus-4-8                  100    ......    ......    ......
+  llm:gpt-4o                           100    ......    ......    ......
   logreg_tfidf_rich                    511    0.4129    0.3990    0.4042
 ```
 
