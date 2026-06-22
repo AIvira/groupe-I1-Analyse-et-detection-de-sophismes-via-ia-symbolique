@@ -166,6 +166,125 @@ def cmd_analyze(args: argparse.Namespace) -> None:
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_analyze_corrections(args: argparse.Namespace) -> None:
+    """Quantifier l'effet de la couche symbolique sur le classifieur statistique.
+
+    Objectif I1 : « analyser les cas ou l'approche symbolique corrige les erreurs
+    du modele (et inversement) ». On rejoue le pipeline sur le jeu de test et on
+    compare, ligne a ligne, l'etiquette du **ML seul** a l'etiquette **hybride**
+    (apres arbitrage regle/ML par la semantique fondee de Dung), face au gold.
+    """
+    import json as _json
+
+    import pandas as pd
+
+    from src.domain.models import TrainingConfig
+    from src.classifiers.baseline import build_split_datasets, load_dataset
+    from src.pipeline.hybrid import HybridFallacyPipeline
+    from src.symbolic.dung import arbitrate
+
+    model_path = Path(args.model_path)
+    if not model_path.exists():
+        raise SystemExit(
+            f"Modele introuvable: {model_path}. Lancer `train` d'abord."
+        )
+    with model_path.open("rb") as handle:
+        model = pickle.load(handle)
+
+    config = TrainingConfig()
+    df = load_dataset(args.dataset, config)
+    _, _, test_df = build_split_datasets(df, config)
+    if args.limit:
+        test_df = test_df.head(args.limit)
+
+    pipeline = HybridFallacyPipeline(model=model, config=config, extract_structure=False)
+    texts = test_df[config.text_column].astype(str).tolist()
+    gold = test_df[config.label_column].astype(str).tolist()
+
+    rows = []
+    n_disagree = 0
+    for i, (text, y) in enumerate(zip(texts, gold)):
+        ml = pipeline.predict_ml(text)
+        rule = pipeline.predict_rules(text)
+        rule_label = rule.label if rule.label != "not_fallacy" else None
+        rule_conf = rule.confidence if rule_label else 0.0
+        arb = arbitrate(
+            ml_label=ml.label,
+            ml_confidence=ml.confidence,
+            rule_label=rule_label,
+            rule_confidence=rule_conf,
+        )
+        n_disagree += int(bool(arb["disagreement"]))
+        rows.append(
+            {
+                "text": text,
+                "gold": y,
+                "ml_label": ml.label,
+                "rule_label": rule_label or "",
+                "final_label": arb["final_label"],
+                "winner": arb["winner"],
+                "changed": arb["final_label"] != ml.label,
+                "ml_correct": ml.label == y,
+                "hybrid_correct": arb["final_label"] == y,
+            }
+        )
+        if args.progress:
+            print(f"\r  corrections: {i + 1}/{len(texts)}", end="", file=sys.stderr, flush=True)
+    if args.progress:
+        print("", file=sys.stderr)
+
+    n = len(rows)
+    changed = [r for r in rows if r["changed"]]
+    corrected = [r for r in changed if not r["ml_correct"] and r["hybrid_correct"]]
+    regressed = [r for r in changed if r["ml_correct"] and not r["hybrid_correct"]]
+    neutral = [r for r in changed if r not in corrected and r not in regressed]
+    ml_acc = sum(r["ml_correct"] for r in rows) / n if n else 0.0
+    hyb_acc = sum(r["hybrid_correct"] for r in rows) / n if n else 0.0
+
+    summary = {
+        "n_test": n,
+        "ml_only_accuracy": round(ml_acc, 4),
+        "hybrid_accuracy": round(hyb_acc, 4),
+        "accuracy_delta": round(hyb_acc - ml_acc, 4),
+        "disagreements_rule_vs_ml": n_disagree,
+        "labels_changed_by_symbolic": len(changed),
+        "symbolic_corrected_ml_errors": len(corrected),
+        "symbolic_regressed": len(regressed),
+        "symbolic_changed_but_neutral": len(neutral),
+    }
+
+    out_csv = Path(args.output_csv)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(out_csv, index=False)
+    Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.output_json).write_text(
+        _json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+    print("=" * 64)
+    print("  EFFET DE LA COUCHE SYMBOLIQUE SUR LE CLASSIFIEUR (jeu de test)")
+    print("=" * 64)
+    print(f"  exemples de test                : {summary['n_test']}")
+    print(f"  accuracy ML seul                : {summary['ml_only_accuracy']:.4f}")
+    print(f"  accuracy hybride (apres Dung)   : {summary['hybrid_accuracy']:.4f}")
+    print(f"  delta                           : {summary['accuracy_delta']:+.4f}")
+    print("-" * 64)
+    print(f"  desaccords regle vs ML          : {summary['disagreements_rule_vs_ml']}")
+    print(f"  etiquettes modifiees (symbolique): {summary['labels_changed_by_symbolic']}")
+    print(f"    -> erreurs ML corrigees       : {summary['symbolic_corrected_ml_errors']}")
+    print(f"    -> regressions introduites    : {summary['symbolic_regressed']}")
+    print(f"    -> changements neutres        : {summary['symbolic_changed_but_neutral']}")
+    print("=" * 64)
+    if corrected:
+        print("\n  Exemples ou le symbolique CORRIGE le ML :")
+        for r in corrected[: args.examples]:
+            print(f"   - gold={r['gold']} | ml={r['ml_label']} -> final={r['final_label']} "
+                  f"(regle={r['rule_label']})")
+            print(f"     « {r['text'][:90]} »")
+    print(f"\nDetail par exemple : {out_csv}")
+    print(f"Synthese (JSON)    : {args.output_json}")
+
+
 def cmd_extract(args: argparse.Namespace) -> None:
     """Extraire la structure argumentative d'un texte (LLM ou heuristique)."""
     from src.extraction.extractor import get_extractor
@@ -225,53 +344,6 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
 
     metrics = metrics_from_predictions_csv(args.predictions_path)
     print(format_metrics_dict(metrics))
-
-
-def cmd_classify_llm(args: argparse.Namespace) -> None:
-    """Classer le test avec OpenAI (version 2) et ecrire predictions + metriques."""
-    import json as _json
-
-    import pandas as pd
-
-    from src.domain.models import TrainingConfig
-    from src.classifiers.baseline import build_split_datasets, load_dataset
-    from src.classifiers.llm import LLMFallacyClassifier, llm_available
-    from src.evaluation.metrics import compute_metrics, format_metrics_dict
-
-    if not llm_available():
-        raise SystemExit(
-            "Classifieur LLM indisponible : exporter OPENAI_API_KEY et installer `openai`."
-        )
-
-    config = TrainingConfig()
-    df = load_dataset(args.dataset, config)
-    _, _, test_df = build_split_datasets(df, config)
-    if args.limit:
-        test_df = test_df.head(args.limit)
-
-    texts = test_df[config.text_column].astype(str).tolist()
-    y_true = test_df[config.label_column].astype(str).tolist()
-
-    clf = LLMFallacyClassifier(model=args.model)
-
-    def progress(done, total):
-        print(f"\r  classification LLM: {done}/{total}", end="", file=sys.stderr, flush=True)
-
-    y_pred = clf.classify_many(texts, on_progress=progress)
-    print("", file=sys.stderr)
-
-    out = pd.DataFrame({"text": texts, "label": y_true, "predicted_label": y_pred})
-    Path(args.predictions_path).parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(args.predictions_path, index=False)
-
-    metrics = compute_metrics(y_true, y_pred)
-    payload = {"model_name": f"llm:{args.model or 'gpt-4o'}", "test_metrics": metrics}
-    Path(args.metrics_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.metrics_path).write_text(_json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-
-    print(format_metrics_dict(metrics))
-    print(f"Predictions: {args.predictions_path}")
-    print(f"Metrics (JSON): {args.metrics_path}")
 
 
 def cmd_compare(args: argparse.Namespace) -> None:
@@ -371,6 +443,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-llm", action="store_true", help="Forcer l'extracteur heuristique (pas d'appel LLM).")
     p.set_defaults(func=cmd_extract)
 
+    # analyze-corrections (objectif I1 : ou le symbolique corrige le classifieur)
+    p = sub.add_parser(
+        "analyze-corrections",
+        help="Quantifier sur le test ou la couche symbolique corrige le classifieur.",
+    )
+    p.add_argument("--dataset", required=True)
+    p.add_argument("--model-path", default=str(DEFAULT_MODEL_PATH))
+    p.add_argument("--limit", type=int, default=None, help="Limiter le nombre d'exemples.")
+    p.add_argument("--output-csv", default="results/corrections_detail.csv")
+    p.add_argument("--output-json", default="results/corrections_summary.json")
+    p.add_argument("--examples", type=int, default=5, help="Nb d'exemples corriges a afficher.")
+    p.add_argument("--progress", action="store_true", help="Afficher la progression.")
+    p.set_defaults(func=cmd_analyze_corrections)
+
     # eval-corpus (US2016 AIF -> AF de Dung)
     p = sub.add_parser("eval-corpus", help="Charger un corpus AIF (US2016) et l'evaluer via Dung.")
     p.add_argument("--corpus-path", default="data/raw/us2016.json")
@@ -395,15 +481,6 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("evaluate", help="Recalculer les metriques depuis un CSV de predictions.")
     p.add_argument("--predictions-path", default=str(DEFAULT_PREDICTIONS_PATH))
     p.set_defaults(func=cmd_evaluate)
-
-    # classify-llm (version 2 : OpenAI comme classifieur)
-    p = sub.add_parser("classify-llm", help="Classer le test avec OpenAI (necessite OPENAI_API_KEY).")
-    p.add_argument("--dataset", required=True)
-    p.add_argument("--model", default=None, help="Modele OpenAI (defaut gpt-4o).")
-    p.add_argument("--limit", type=int, default=None, help="Limiter le nombre d'exemples (cout).")
-    p.add_argument("--predictions-path", default="results/llm_predictions.csv")
-    p.add_argument("--metrics-path", default="results/llm_metrics.json")
-    p.set_defaults(func=cmd_classify_llm)
 
     # compare (tableau cote a cote des approches)
     p = sub.add_parser("compare", help="Comparer plusieurs metrics.json cote a cote.")

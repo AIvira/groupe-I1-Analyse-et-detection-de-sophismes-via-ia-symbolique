@@ -5,26 +5,25 @@ argumentatifs (premisses, conclusions, relations d'attaque/support, types de
 sophismes). Cette etape alimente la couche symbolique (projection en AF de
 Dung). On fournit :
 
-- `LLMArgumentExtractor` : extraction via OpenAI (SDK openai), sortie
-  structuree (JSON valide via `chat.completions.parse` + schema Pydantic).
+- `LLMArgumentExtractor` : extraction via un LLM (SDK openai), sortie structuree
+  (JSON valide via `chat.completions.parse` + schema Pydantic). Le backend est
+  OpenAI distant si `OPENAI_API_KEY` est defini, sinon Ollama local (`llama3.2`)
+  — voir `src.llm_backend`.
 - `HeuristicArgumentExtractor` : repli deterministe hors-ligne base sur les
   marqueurs de discours (« because », « therefore », « but »...) + les regles
   lexicales de sophismes. Permet de faire tourner et tester tout le pipeline
-  sans cle API.
+  sans LLM (et sert aussi de repli si l'appel LLM echoue).
 
-`get_extractor()` choisit le LLM si une cle API est disponible, sinon le repli.
+`get_extractor()` choisit le LLM si un backend est disponible, sinon le repli.
 """
 
 from __future__ import annotations
 
-import os
 import re
+import sys
 from typing import List, Optional
 
 from src.extraction.argmodel import ArgRelation, ArgUnit, ArgumentMap
-
-# Modele OpenAI par defaut (surchargeable via OPENAI_MODEL).
-DEFAULT_MODEL = "gpt-4o"
 
 # Marqueurs de discours pour le repli heuristique.
 _CONCLUSION_MARKERS = re.compile(
@@ -147,23 +146,34 @@ class LLMArgumentExtractor:
     """Extraction via OpenAI avec sortie structuree (JSON valide)."""
 
     def __init__(self, model: Optional[str] = None, max_tokens: int = 2048) -> None:
-        from openai import OpenAI  # import paresseux
+        from src.llm_backend import default_model, make_client
 
-        self._client = OpenAI()  # lit OPENAI_API_KEY de l'env
-        self._model = model or os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
+        self._client = make_client()  # OpenAI distant ou Ollama local selon l'env
+        self._model = model or default_model()
         self._max_tokens = max_tokens
         self._schema = _build_schema()
+        self._fallback: Optional[HeuristicArgumentExtractor] = None
 
     def extract(self, text: str) -> ArgumentMap:
-        response = self._client.chat.completions.parse(
-            model=self._model,
-            max_completion_tokens=self._max_tokens,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": text},
-            ],
-            response_format=self._schema,
-        )
+        try:
+            response = self._client.chat.completions.parse(
+                model=self._model,
+                max_completion_tokens=self._max_tokens,
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                response_format=self._schema,
+            )
+        except Exception as exc:  # quota, reseau, auth... -> repli heuristique
+            print(
+                f"[extraction] appel OpenAI echoue ({type(exc).__name__}: {exc}); "
+                "repli sur l'extracteur heuristique.",
+                file=sys.stderr,
+            )
+            if self._fallback is None:
+                self._fallback = HeuristicArgumentExtractor()
+            return self._fallback.extract(text)
         parsed = response.choices[0].message.parsed
         amap = ArgumentMap(meta={"extractor": "llm", "model": self._model, "raw_text": text})
         for u in parsed.units:
@@ -178,11 +188,9 @@ class LLMArgumentExtractor:
 
 
 def llm_available() -> bool:
-    import importlib.util
+    from src.llm_backend import llm_available as _available
 
-    return bool(os.environ.get("OPENAI_API_KEY")) and (
-        importlib.util.find_spec("openai") is not None
-    )
+    return _available()
 
 
 def get_extractor(prefer_llm: bool = True):

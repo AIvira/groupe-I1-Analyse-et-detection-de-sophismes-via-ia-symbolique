@@ -30,8 +30,12 @@ def test_heuristic_extractor_finds_units_and_fallacy():
     assert len(amap.attacks()) >= 1
 
 
-def test_get_extractor_falls_back_to_heuristic_without_key(monkeypatch):
+def test_get_extractor_falls_back_to_heuristic_without_backend(monkeypatch):
+    # Aucun backend LLM : ni cle OpenAI, ni serveur local joignable.
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setattr("src.llm_backend._server_reachable", lambda *a, **k: False)
     assert isinstance(get_extractor(), HeuristicArgumentExtractor)
 
 

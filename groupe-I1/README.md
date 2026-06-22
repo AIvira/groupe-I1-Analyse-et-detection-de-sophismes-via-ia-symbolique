@@ -16,11 +16,12 @@ le pipeline **neuro-symbolique** decrit par le sujet, de bout en bout :
 
 | Objectif du sujet | Etat | Realisation |
 |---|---|---|
-| Extraction d'arguments (premisses, conclusions, attaque/support) | ✅ | `src/extraction.py` — LLM OpenAI (sortie structuree) + repli heuristique hors-ligne |
+| Extraction d'arguments (premisses, conclusions, attaque/support) | ✅ | `src/extraction/extractor.py` — LLM via API compatible OpenAI (Ollama local `llama3.2` par defaut) + repli heuristique hors-ligne |
 | Classification des sophismes | ✅ | baseline TF-IDF / transformer / NLI + regles |
-| Validation formelle via AF de Dung (TweetyProject) | ✅ | `src/symbolic.py` + `src/argmodel.py` (`to_dung`, `coherence`) |
-| Evaluation sur corpus annote (US2016, ArgMine) F1/P/R | ✅ | `src/corpus_aif.py` — US2016 (AIFdb) -> AF de Dung |
-| Analyse des corrections symbolique ↔ neuronal | ✅ | `scripts/evaluate_symbolic.py` |
+| Validation formelle via AF de Dung (TweetyProject) | ✅ | `src/symbolic/dung.py` + `src/extraction/argmodel.py` (`to_dung`, `coherence`) |
+| Evaluation sur corpus annote (US2016) F1/P/R | ✅ | `eval-corpus` — US2016 (AIFdb) -> AF de Dung ; resultat archive dans `results/us2016_dung_eval.txt` (5293 propositions, 802 acceptes / 542 rejetes) |
+| Analyse des corrections symbolique ↔ neuronal | ✅ | commande `analyze-corrections` (archive `results/corrections_summary.json`) ; variante CSV : `scripts/evaluate_symbolic.py` |
+| Livrable demo/UI fonctionnelle | ✅ | `app.py` — UI Streamlit (texte → structure + graphe de Dung + verdict symbolique) |
 
 ## Objectif
 
@@ -45,7 +46,19 @@ python3 -m src.main train --dataset data/processed/fallacies_full.csv
 
 # 3. Analyse neuro-symbolique complete d'un texte
 python3 -m src.main analyze --text "Either you support this law or you hate freedom."
+
+# 4. Demo interactive (UI Streamlit) — necessite un serveur Ollama local
+ollama serve & ollama pull llama3.2     # backend LLM local (une fois)
+streamlit run app.py                    # http://localhost:8501
 ```
+
+**Demo Streamlit (`app.py`).** On saisit un texte argumentatif ; l'UI affiche la
+**structure extraite** (premisses/conclusions), le **graphe d'argumentation de
+Dung** (unites acceptees/rejetees, attaques/supports), le **label de sophisme**,
+le **verdict symbolique formel** et la **question critique** du scheme de Walton.
+Elle cible Ollama `llama3.2` en local par defaut (surchargeable via
+`LLM_BACKEND=openai`) ; sans backend LLM joignable, l'extraction retombe sur
+l'heuristique.
 
 Le MVP cible d'abord les labels suivants :
 - `ad_hominem`
@@ -62,8 +75,8 @@ Le MVP cible d'abord les labels suivants :
 - `src/training.py` : baseline supervisee TF-IDF (rapide, sans torch)
 - `src/transformer_training.py` / `src/nli_training.py` : pipelines transformer & NLI (torch, charges a la demande)
 - `src/metrics.py` : metriques unifiees (accuracy, balanced acc, macro/micro/weighted F1, par-classe) + dashboard console et JSON
-- `src/extraction.py` : **extraction d'arguments** — LLM OpenAI (`chat.completions.parse` + schema) + repli heuristique hors-ligne
-- `src/llm_classifier.py` : **classifieur LLM** (version 2) — OpenAI classe les sophismes, pour comparaison avec le ML
+- `src/extraction.py` : **extraction d'arguments** — LLM via API compatible OpenAI (Ollama local `llama3.2` ou OpenAI) + repli heuristique hors-ligne
+- `src/llm_backend.py` : selection du backend LLM (Ollama local par defaut, OpenAI si `OPENAI_API_KEY`)
 - `src/argmodel.py` : modele de carte argumentative (`ArgUnit`/`ArgRelation`/`ArgumentMap`) + projection `to_dung()`
 - `src/corpus_aif.py` : chargement de corpus AIF (US2016) -> `ArgumentMap` -> AF de Dung
 - `src/symbolic.py` : **couche symbolique** — AF de Dung via TweetyProject (JPype), schemes argumentatifs, arbitrage
@@ -109,15 +122,14 @@ python3 -m src.main predict --text "Either you support this law or you hate free
 # Analyse neuro-symbolique complete (extraction + neuronal + regles + Dung/Tweety)
 python3 -m src.main analyze --text "Either you support this law or you hate freedom."
 
-# Extraire la structure argumentative (LLM si OPENAI_API_KEY, sinon heuristique)
+# Extraire la structure argumentative (LLM local Ollama par defaut, sinon heuristique)
 python3 -m src.main extract --text "We must ban it because everyone knows it is bad, but they deny it."
 
 # Evaluer un corpus annote d'argument mining (US2016) via les AF de Dung
 python3 -m src.main eval-corpus --download --all-semantics
 
-# Version 2 : OpenAI comme classifieur, puis comparaison cote a cote
-python3 -m src.main classify-llm --dataset data/processed/fallacies_full.csv --limit 100
-python3 -m src.main compare results/full_metrics.json results/llm_metrics.json
+# Quantifier ou la couche symbolique corrige le classifieur (objectif I1)
+python3 -m src.main analyze-corrections --dataset data/processed/fallacies_full.csv --progress
 
 # Re-afficher les metriques depuis un CSV de predictions
 python3 -m src.main evaluate --predictions-path results/test_predictions.csv
@@ -228,16 +240,27 @@ python3 scripts/evaluate_symbolic.py --predictions results/full_pred.csv
 ## Extraction d'arguments (LLM) & corpus US2016
 
 **Extraction.** `src/extraction.py` transforme un texte en carte argumentative
-(`ArgumentMap`). Avec une cle API OpenAI, l'extraction est faite par OpenAI
-(`chat.completions.parse` + schema Pydantic, modele `gpt-4o` par defaut,
-surchargeable via `OPENAI_MODEL`). Sans cle, un **repli heuristique
-deterministe** (marqueurs de discours « because / therefore / but » + regles de
-sophismes) prend le relais, ce qui rend tout le pipeline executable et testable
-hors-ligne.
+(`ArgumentMap`). L'extraction est faite par un LLM via une API compatible OpenAI
+(`chat.completions.parse` + schema Pydantic). Le backend est choisi
+automatiquement (`src/llm_backend.py`) :
+
+- **Ollama local** par defaut (gratuit, hors-ligne) : modele `llama3.2` sur
+  `http://localhost:11434/v1`. Necessite `ollama serve` + `ollama pull llama3.2`.
+- **OpenAI distant** si `OPENAI_API_KEY` est defini : modele `gpt-4o`.
+
+Surcharges via `LLM_MODEL` / `OPENAI_MODEL` (modele) et `OPENAI_BASE_URL`
+(serveur). Si aucun backend n'est joignable — ou si l'appel LLM echoue — un
+**repli heuristique deterministe** (marqueurs de discours « because / therefore /
+but » + regles de sophismes) prend le relais, ce qui rend tout le pipeline
+executable et testable hors-ligne.
 
 ```bash
-# Avec LLM : export OPENAI_API_KEY=...  (sinon repli heuristique automatique)
+# Backend local Ollama (defaut) :
+ollama serve &              # demarrer le serveur
+ollama pull llama3.2        # telecharger le modele (une fois)
 python3 -m src.main extract --text "We must ban this app because everyone knows it spies, but the firm denies it."
+
+# Ou backend OpenAI distant : export OPENAI_API_KEY=...
 ```
 
 La carte est projetee en AF de Dung (`ArgumentMap.to_dung()`), puis on calcule
@@ -252,39 +275,27 @@ corpus annote, evalue par TweetyProject.
 
 ```bash
 python3 -m src.main eval-corpus --download --all-semantics
-# ex. US2016 : 5293 propositions, 889 attaques -> AF de Dung
-#   grounded/stable/preferred : 802 arguments acceptes, 542 rejetes
+# US2016 : 5293 propositions (premisses=2611, conclusions=2072), 889 attaques, 3379 supports
+#   grounded/stable/preferred : 802 arguments acceptes, 542 rejetes (coherent)
+#   resultat archive : results/us2016_dung_eval.txt
 ```
 
-## Version 2 — OpenAI comme classifieur (comparaison pedagogique)
-
-`src/llm_classifier.py` ajoute un **classifieur LLM** (`LLMFallacyClassifier`) :
-OpenAI classe directement chaque texte dans l'un des 13 sophismes (sortie
-structuree contrainte a un `enum`, prompt systeme des definitions mis en cache).
-But : comparer, pour la soutenance, une approche **LLM zero-shot** a nos
-classifieurs **statistiques** (TF-IDF, transformer) sur le meme split de test —
-notamment sur les classes semantiquement diffuses (ex. `intentional`) ou un
-sac-de-mots plafonne.
+**Apport du symbolique sur le classifieur (objectif I1).** La commande
+`analyze-corrections` rejoue le pipeline sur le jeu de test et compare, ligne a
+ligne, l'etiquette du **ML seul** a l'etiquette **hybride** (apres arbitrage
+regle/ML par la semantique fondee de Dung), face au gold.
 
 ```bash
-export OPENAI_API_KEY=...
-# Classer le test avec OpenAI (--limit pour borner le cout)
-python3 -m src.main classify-llm --dataset data/processed/fallacies_full.csv --limit 100
-
-# Comparer toutes les approches cote a cote
-python3 -m src.main compare results/full_metrics.json results/llm_metrics.json
+python3 -m src.main analyze-corrections --dataset data/processed/fallacies_full.csv --progress
+# 511 exemples : accuracy ML 0.3894 -> hybride 0.3914 (+0.0020)
+#   6 desaccords regle/ML, 1 etiquette modifiee : 1 erreur ML corrigee, 0 regression
+#   ex. gold=ad_hominem, ml=straw_man -> final=ad_hominem (regle ad_hominem confiante)
+#   resultats : results/corrections_summary.json + results/corrections_detail.csv
 ```
 
-Exemple de sortie `compare` :
-
-```
-  modele                                 n  accuracy   macroF1   bal.acc
-  llm:gpt-4o                           100    ......    ......    ......
-  logreg_tfidf_rich                    511    0.4129    0.3990    0.4042
-```
-
-> Sans cle API, `classify-llm` s'arrete avec un message clair ; le reste du
-> pipeline reste utilisable.
+> Lecture : l'arbitrage symbolique est **conservateur et haute precision** — il
+> n'intervient que sur des desaccords ou une regle explicite est tres confiante
+> (seuil 0.9), et dans ce cas il a corrige le ML sans jamais le degrader (1/1).
 
 ## Resultats & metriques
 
