@@ -1,0 +1,26 @@
+[project]
+name = "m3-symbolic-regression"
+version = "0.1.0"
+description = "Regression symbolique avec PySR sur lois physiques de reference."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "matplotlib>=3.8",
+    "numpy>=1.26",
+    "pandas>=2.0",
+    "pysr>=1.5",
+    "scikit-learn>=1.4",
+    "scipy>=1.10",
+    "sympy>=1.12",
+]
+
+[project.scripts]
+m3-symbolic-regression = "m3_symbolic_regression.run_experiments:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
