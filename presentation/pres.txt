@@ -1,0 +1,59 @@
+  Trame — 10 min (minutage serré, ~1 slide/min)
+
+  1. Titre & accroche — 0:30 · slide 1
+
+  - Titre : « Détection de sophismes par IA neuro-symbolique » — sujet I1, noms, EPITA SCIA.
+  - Accroche : 1 exemple de sophisme à l'écran (« Soit tu soutiens cette loi, soit tu détestes la liberté ») et la question : une machine peut-elle dire pourquoi c'est fallacieux, pas juste que ça l'est ?
+
+  2. Le problème — 1:00 · slide 2
+
+  - Définir sophisme (erreur de raisonnement : ad hominem, homme de paille, faux dilemme, appel à l'autorité…).
+  - Pourquoi c'est dur : variabilité linguistique + besoin de justification logique, pas qu'une étiquette.
+  - Le pari du sujet : NLP (robustesse) + raisonnement symbolique (rigueur/explicabilité).
+
+  3. L'architecture en un schéma — 1:00 · slide 3 :star:
+
+  - Le schéma central : Texte → [LLM extraction] → carte d'arguments → [Classifieurs ML/règles] → [Couche symbolique Dung/TweetyProject] → label + verdict formel.
+  - Phrase-clé : « le neuronal propose, le symbolique dispose et explique ».
+
+  4. Étape 1 — Extraction (LLM) — 1:00 · slide 4
+
+  - LLM (llama3.2 local via Ollama) extrait prémisses / conclusions / relations attaque-support (sortie structurée).
+  - Repli heuristique hors-ligne → pipeline toujours exécutable/testable.
+
+  5. Étape 2 — Classification — 0:45 · slide 5
+
+  - 13 types de sophismes ; règles lexicales haute précision + baseline TF-IDF (+ transformer/NLI).
+  - Vite : ce n'est pas le cœur du cours, on enchaîne.
+
+  6. Étape 3 — Le cœur symbolique — 1:45 · slides 6-7 :star::star:
+
+  - Frameworks de Dung via TweetyProject (JPype) : arguments + attaques → extensions (fondée/stable/préférée).
+  - Schèmes de Walton : chaque sophisme ↔ sa question critique, encodée en mini-AF CLAIM ← QUESTION_CRITIQUE.
+  - Deux mécanismes formels (à montrer avec un petit graphe) :
+    - Verdict : si la conclusion n'est pas dans l'extension fondée → fallacieux ; si réinstaurée → faux positif filtré.
+    - Arbitrage règle vs ML résolu par la sémantique fondée.
+
+  7. DÉMO LIVE — 2:00 · slide 8 :star::star::star:
+
+  - Streamlit : on tape un texte → structure extraite + graphe de Dung (accepté/rejeté) + label + verdict + question critique.
+  - Montrer 2 cas : un sophisme confirmé, et idéalement un cas de réinstauration (faux positif filtré).
+  - Plan B : captures d'écran si pas de réseau/Ollama.
+
+  8. Évaluation & résultats — 1:00 · slide 9
+
+  - Classification : macro-F1 0.40 (causalNLP, 13 classes) — honnête sur le plafond du corpus.
+  - Argument-mining annoté : US2016 (5293 propositions → 802 acceptés / 542 rejetés) et ArgMine, projetés en AF de Dung via Tweety.
+  - Apport symbolique chiffré (les 2 sens) : symbolique→ML et ML→symbolique, haute précision (1/1, 0 régression).
+
+  9. Analyse critique & limites — 0:45 · slide 10
+
+  - Honnêteté : l'apport du symbolique sur l'accuracy est faible (corpus = phrases courtes de manuel) ; sa vraie valeur = explicabilité formelle + verdict vérifiable.
+  - Limites : taille/qualité du corpus, arbitrage conservateur (seuil 0.9).
+
+  - Vite : ce n'est pas le cœur du cours, on enchaîne.
+
+10. Conclusion & perspectives — 0:30 · slide 11
+
+  - Ce qu'on a montré : pipeline hybride complet, du texte au verdict formel explicable.
+  - Perspectives : LLM plus gros, F1 sur l'extraction d'arguments, schèmes de Walton enrichis.
