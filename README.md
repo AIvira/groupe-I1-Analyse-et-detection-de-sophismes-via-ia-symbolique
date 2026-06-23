@@ -35,9 +35,9 @@ Les solveurs SAT/SMT (Z3, PySAT) apparaissent dans les deux cours, mais avec des
 | 1 personne (solo) | +3 points |
 | 4 personnes | -1 point |
 
-### Soutenance — Evaluation collegiale
+### Soutenance — Evaluation par le professeur
 
-La soutenance finale est evaluee de maniere **collegiale** (pairs + enseignants). Chaque groupe est note sur **4 criteres** (0-10 chacun) :
+La soutenance finale est evaluee par **le professeur** (pas d'evaluation collégiale par les pairs). Chaque groupe est note sur **4 criteres** (0-10 chacun) :
 
 | Critere | Description |
 |---------|-------------|
@@ -53,12 +53,12 @@ La soutenance finale est evaluee de maniere **collegiale** (pairs + enseignants)
 - **Code source** documente dans un sous-dossier dedie (`groupe-XX-nom-sujet/`)
 - **Notebook Jupyter** explicatif avec analyse et visualisations **OU** **UI/demo fonctionnelle** (au choix — un notebook tres complet peut tenir lieu de demo, et inversement)
 - **Slides de soutenance** (PDF ou lien)
-- **Pull Request** soumise au plus tard **2 jours avant la soutenance**
+- **Pull Request** soumise **avant la soutenance** (voir echeances ci-dessous)
 
 ### Echeances
 
-- **Date de soutenance** : en cours de confirmation avec la scolarite
-- **Deadline PR** : 2 jours avant la soutenance
+- **Soutenances** : reparties en deux temps suite a une modification d'emploi du temps — une partie le **vendredi 26 juin 2026**, le reste en **juillet 2026** (dates exactes en cours de confirmation avec la scolarite).
+- **Deadline PR** : les PRs doivent etre soumises dans les jours precedant votre creneau de soutenance ; receptionnez-les sur ce depot **avant votre passage**.
 
 ---
 
