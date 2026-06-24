@@ -31,6 +31,20 @@ _CONCLUSION_MARKERS = re.compile(
 )
 _PREMISE_MARKERS = re.compile(r"\b(because|since|as|for|car|parce que|puisque)\b", re.I)
 _ATTACK_MARKERS = re.compile(r"\b(but|however|yet|although|though|mais|cependant|pourtant)\b", re.I)
+# Marqueurs de "refutation d'objection" : la clause adversative refute l'objection
+# qui la precede (et non la conclusion) -> contre-attaque => la conclusion est
+# reinstauree (la question critique du scheme est "repondue", cf. pipeline).
+_REBUTTAL_MARKERS = re.compile(
+    r"\b("
+    r"retracted|debunked|disproven|disproved|refuted|discredited|"
+    r"fraudulent|fabricated|hoax|unfounded|baseless|"
+    r"exposed as (?:false|fake|fraud|a lie)|"
+    r"(?:proven|shown|turned out|found) (?:to be )?(?:false|untrue|wrong|baseless)|"
+    r"no (?:credible )?evidence|"
+    r"retracte|dementi|refute|discredite|infonde"
+    r")\b",
+    re.I,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -81,13 +95,41 @@ class HeuristicArgumentExtractor:
             len(clauses) - 1 if (_ATTACK_MARKERS.search(text) and len(clauses) >= 2) else None
         )
 
-        # supports : chaque premisse (non adversative) soutient la conclusion
+        # Motif "refutation d'objection" : la clause adversative refute l'objection
+        # qui la precede (marqueurs « retracted / debunked / exposed as false »...)
+        # plutot que la conclusion. On a alors une *contre-attaque* :
+        #   objection -> attaque -> conclusion ;  refutation -> attaque -> objection
+        # => la conclusion attaquee est REINSTAUREE dans l'extension fondee (la
+        # question critique du scheme est "repondue") et le sophisme detecte par
+        # le neuronal est filtre comme faux positif. Sans ce motif on garde le
+        # comportement simple (l'adversative attaque directement la conclusion).
+        objection_idx = None
+        if adversative_idx is not None:
+            candidate = adversative_idx - 1
+            if (
+                _REBUTTAL_MARKERS.search(clauses[adversative_idx])
+                and candidate != conclusion_idx
+                and 0 <= candidate < len(clauses)
+            ):
+                objection_idx = candidate
+
+        # supports : chaque premisse "neutre" (ni conclusion, ni objection, ni
+        # clause adversative) soutient la conclusion
+        skip = {conclusion_idx, adversative_idx, objection_idx}
         for i in range(len(clauses)):
-            if i != conclusion_idx and i != adversative_idx and len(clauses) > 1:
+            if i not in skip and len(clauses) > 1:
                 amap.add_relation(ArgRelation(source=f"u{i}", target=f"u{conclusion_idx}", kind="support"))
 
-        # attaque interne : la clause adversative attaque la conclusion
-        if adversative_idx is not None:
+        if objection_idx is not None:
+            # refutation d'objection -> reinstauration de la conclusion
+            amap.add_relation(
+                ArgRelation(source=f"u{objection_idx}", target=f"u{conclusion_idx}", kind="attack")
+            )
+            amap.add_relation(
+                ArgRelation(source=f"u{adversative_idx}", target=f"u{objection_idx}", kind="attack")
+            )
+        elif adversative_idx is not None:
+            # attaque interne simple : la clause adversative attaque la conclusion
             amap.add_relation(
                 ArgRelation(source=f"u{adversative_idx}", target=f"u{conclusion_idx}", kind="attack")
             )
@@ -112,7 +154,23 @@ _SYSTEM_PROMPT = (
     "appeal_to_emotion, circular_reasoning, equivocation, fallacy_of_credibility, "
     "fallacy_of_logic, fallacy_of_relevance, false_causality, false_dilemma, "
     "faulty_generalization, intentional, straw_man. Use stable short unit ids like "
-    "u0, u1. Only include attack/support relations you can justify from the text."
+    "u0, u1. Only include attack/support relations you can justify from the text.\n\n"
+    "RELATION DIRECTION IS CRITICAL. First identify the main conclusion (the claim "
+    "the text ultimately defends). Then, for every other unit, decide what it "
+    "targets:\n"
+    "- A unit that gives a reason FOR the conclusion `support`s it.\n"
+    "- A unit that objects to the conclusion `attack`s it.\n"
+    "- IMPORTANT: a unit that REBUTS or DISCREDITS an objection (e.g. it says the "
+    "objection's source was retracted, debunked, disproven, fabricated, or shown to "
+    "be false) attacks THAT OBJECTION unit, NOT the conclusion. This is a "
+    "counter-attack that reinstates the conclusion. Do not point it at the "
+    "conclusion.\n\n"
+    "Example — text: \"X is safe. A report claimed X is dangerous, but that report "
+    "was retracted as fraudulent.\"\n"
+    "  units: u0='X is safe' (conclusion), u1='a report claimed X is dangerous' "
+    "(premise), u2='that report was retracted as fraudulent' (premise)\n"
+    "  relations: u1 attack u0 (the objection attacks the conclusion); "
+    "u2 attack u1 (the rebuttal attacks the objection, NOT u0)."
 )
 
 

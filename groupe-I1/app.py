@@ -153,6 +153,15 @@ with st.sidebar:
         "4. **Scheme de Walton** : question critique du sophisme"
     )
     st.divider()
+    extractor_choice = st.radio(
+        "Extracteur d'arguments",
+        ["Auto (LLM si dispo)", "LLM (Ollama/OpenAI)", "Heuristique (hors-ligne, deterministe)"],
+        index=0,
+        help="L'heuristique est deterministe : elle reconnait le motif « objection, "
+             "but refutation » (retracted/debunked/exposed as false...) et reinstaure "
+             "alors la conclusion — utile pour demontrer le filtrage de faux positif "
+             "de facon reproductible, sans dependre d'un LLM.",
+    )
     st.caption(backend_status())
     if not MODEL_PATH.exists():
         st.warning("Modele ML absent (`models/baseline.pkl`). Lancer `train` d'abord — "
@@ -166,7 +175,18 @@ default_text = "" if example == "(saisie libre)" else example
 text = st.text_area("Texte argumentatif", value=default_text, height=100)
 
 if st.button("Analyser", type="primary") and text.strip():
-    with st.spinner("Analyse (extraction LLM + Dung/Tweety)..."):
+    # Choix de l'extracteur (cf. barre laterale) : on l'injecte dans le pipeline
+    # mis en cache. `analyze()` utilise `self._extractor` s'il est defini, sinon
+    # il retombe sur `get_extractor()` (LLM si dispo).
+    from src.extraction.extractor import HeuristicArgumentExtractor, get_extractor
+
+    if extractor_choice.startswith("Heuristique"):
+        pipeline._extractor = HeuristicArgumentExtractor()
+    elif extractor_choice.startswith("LLM"):
+        pipeline._extractor = get_extractor(prefer_llm=True)
+    else:
+        pipeline._extractor = None  # auto
+    with st.spinner("Analyse (extraction + Dung/Tweety)..."):
         result = pipeline.analyze(text)
 
     # --- Verdict principal -------------------------------------------------

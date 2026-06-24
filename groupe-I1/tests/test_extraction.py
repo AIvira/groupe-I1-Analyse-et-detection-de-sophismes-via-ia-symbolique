@@ -30,6 +30,36 @@ def test_heuristic_extractor_finds_units_and_fallacy():
     assert len(amap.attacks()) >= 1
 
 
+def test_heuristic_rebuttal_reinstates_conclusion():
+    """Motif « conclusion. objection, but refutation » : la refutation attaque
+    l'objection (et non la conclusion) -> contre-attaque qui REINSTAURE la
+    conclusion dans l'extension fondee (base du filtrage de faux positif)."""
+    ext = HeuristicArgumentExtractor()
+    amap = ext.extract(
+        "Vaccines are safe. A report claimed they cause autism, "
+        "but that report was retracted after being exposed as fraudulent."
+    )
+    conclusion = next(u.id for u in amap.units.values() if u.role == "conclusion")
+    attacks = amap.attacks()
+    # une objection attaque la conclusion...
+    objections = [src for src, tgt in attacks if tgt == conclusion]
+    assert objections, "l'objection doit attaquer la conclusion"
+    # ...et la refutation attaque cette objection (contre-attaque)
+    assert any(tgt == objections[0] for src, tgt in attacks), "la refutation doit attaquer l'objection"
+    coh = amap.coherence("grounded")
+    assert conclusion in coh["accepted"]  # conclusion reinstauree
+
+
+def test_heuristic_simple_adversative_attacks_conclusion():
+    """Sans marqueur de refutation, l'adversative attaque directement la
+    conclusion (comportement historique conserve)."""
+    ext = HeuristicArgumentExtractor()
+    amap = ext.extract("We must ban it because everyone knows it is bad, but they deny it.")
+    conclusion = next(u.id for u in amap.units.values() if u.role == "conclusion")
+    coh = amap.coherence("grounded")
+    assert conclusion in coh["rejected"]  # conclusion attaquee et non reinstauree
+
+
 def test_get_extractor_falls_back_to_heuristic_without_backend(monkeypatch):
     # Aucun backend LLM : ni cle OpenAI, ni serveur local joignable.
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
