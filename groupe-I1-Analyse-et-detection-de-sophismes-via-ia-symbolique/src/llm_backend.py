@@ -37,6 +37,12 @@ def default_model() -> str:
     return os.environ.get("LLM_MODEL") or os.environ.get("OPENAI_MODEL") or DEFAULT_OLLAMA_MODEL
 
 
+def using_local() -> bool:
+    """Vrai si le backend pointe vers un serveur local (Ollama), faux sinon (OpenAI distant)."""
+    host = urlparse(resolved_base_url()).hostname or ""
+    return host in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+
+
 def make_client():
     """Construit un client OpenAI pointe vers le serveur Ollama local."""
     from openai import OpenAI
