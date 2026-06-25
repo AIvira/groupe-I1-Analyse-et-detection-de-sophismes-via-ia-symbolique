@@ -17,7 +17,6 @@ par defaut) -> classification ML/regles -> arbitrage et verdict via TweetyProjec
 from __future__ import annotations
 
 import os
-import pickle
 import sys
 from pathlib import Path
 
@@ -34,6 +33,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 MODEL_PATH = PROJECT_ROOT / "models" / "baseline.pkl"
+TRANSFORMER_DIR = PROJECT_ROOT / "models" / "transformer"
 
 EXAMPLES = [
     "Either you support this law or you hate freedom.",
@@ -52,14 +52,21 @@ ROLE_COLORS = {
 
 @st.cache_resource(show_spinner="Chargement du modele + demarrage de la JVM Tweety...")
 def load_pipeline():
-    """Charge le modele picke et construit le pipeline (JVM demarree paresseusement)."""
+    """Charge le modele et construit le pipeline (JVM demarree paresseusement).
+
+    Si un dossier RoBERTa est present, on charge l'ensemble TF-IDF+RoBERTa
+    (meilleur macro F1 mesure ~0.47) ; sinon on retombe sur le baseline TF-IDF.
+    """
+    from src.classifiers.ensemble import load_ml_model
     from src.pipeline.hybrid import HybridFallacyPipeline
 
     model = None
+    ensemble = False
     if MODEL_PATH.exists():
-        with MODEL_PATH.open("rb") as handle:
-            model = pickle.load(handle)
-    return HybridFallacyPipeline(model=model, extract_structure=True), model is not None
+        transformer_dir = str(TRANSFORMER_DIR) if TRANSFORMER_DIR.exists() else None
+        model = load_ml_model(str(MODEL_PATH), transformer_dir=transformer_dir)
+        ensemble = transformer_dir is not None
+    return HybridFallacyPipeline(model=model, extract_structure=True), model is not None, ensemble
 
 
 def backend_status() -> str:
@@ -167,7 +174,11 @@ with st.sidebar:
         st.warning("Modele ML absent (`models/baseline.pkl`). Lancer `train` d'abord — "
                    "le pipeline tourne en mode regles seules en attendant.")
 
-pipeline, has_model = load_pipeline()
+pipeline, has_model, ensemble_active = load_pipeline()
+if ensemble_active:
+    st.caption("Classifieur : ensemble TF-IDF + RoBERTa (macro F1 ~0.47)")
+elif has_model:
+    st.caption("Classifieur : TF-IDF seul (RoBERTa absent)")
 
 st.subheader("Texte a analyser")
 example = st.selectbox("Exemples", ["(saisie libre)"] + EXAMPLES, index=1)

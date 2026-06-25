@@ -103,7 +103,7 @@ class HybridFallacyPipeline:
             label=label,
             confidence=scores[label],
             mode="ml",
-            evidence=["prediction supervisee basee sur features lexicales et structurelles"],
+            evidence=["prediction du classifieur supervise (TF-IDF ou ensemble TF-IDF+RoBERTa)"],
             scores=scores,
         ))
 

@@ -66,18 +66,33 @@ def cmd_train(args: argparse.Namespace) -> None:
     print(f"Metrics (JSON):    {args.metrics_path}")
 
 
+def _load_ml_model(args: argparse.Namespace):
+    """Charge le classifieur ML : baseline TF-IDF seul, ou ensemble TF-IDF+RoBERTa.
+
+    L'ensemble est active par defaut des qu'un dossier transformer existe ; on peut
+    le forcer au baseline seul via `--no-ensemble`.
+    """
+    from src.classifiers.ensemble import load_ml_model
+
+    model_path = Path(args.model_path)
+    if not model_path.exists():
+        return None
+    transformer_dir = None
+    if not getattr(args, "no_ensemble", False):
+        candidate = Path(getattr(args, "transformer_dir", DEFAULT_TRANSFORMER_DIR))
+        if candidate.exists():
+            transformer_dir = str(candidate)
+    return load_ml_model(str(model_path), transformer_dir=transformer_dir)
+
+
 def cmd_predict(args: argparse.Namespace) -> None:
     from src.pipeline.hybrid import HybridFallacyPipeline
 
-    model = None
-    model_path = Path(args.model_path)
-    if model_path.exists():
-        with model_path.open("rb") as handle:
-            model = pickle.load(handle)
+    model = _load_ml_model(args)
     mode = args.mode
     if model is None and mode in {"ml", "hybrid"}:
         print(
-            f"[warn] no trained model at {model_path}; falling back to --mode rules. "
+            f"[warn] no trained model at {args.model_path}; falling back to --mode rules. "
             "Run `train` first.",
             file=sys.stderr,
         )
@@ -151,11 +166,7 @@ def cmd_analyze(args: argparse.Namespace) -> None:
     """Analyse neuro-symbolique complete (neuronal + regles + Dung/Tweety)."""
     from src.pipeline.hybrid import HybridFallacyPipeline
 
-    model = None
-    model_path = Path(args.model_path)
-    if model_path.exists():
-        with model_path.open("rb") as handle:
-            model = pickle.load(handle)
+    model = _load_ml_model(args)
 
     pipeline = HybridFallacyPipeline(
         model=model,
@@ -188,8 +199,7 @@ def cmd_analyze_corrections(args: argparse.Namespace) -> None:
         raise SystemExit(
             f"Modele introuvable: {model_path}. Lancer `train` d'abord."
         )
-    with model_path.open("rb") as handle:
-        model = pickle.load(handle)
+    model = _load_ml_model(args)
 
     config = TrainingConfig()
     df = load_dataset(args.dataset, config)
@@ -426,6 +436,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mode", choices=["rules", "ml", "hybrid"], default="hybrid")
     p.add_argument("--model-path", default=str(DEFAULT_MODEL_PATH))
     p.add_argument("--mappings-path", default=str(DEFAULT_MAPPINGS_PATH))
+    p.add_argument("--transformer-dir", default=str(DEFAULT_TRANSFORMER_DIR),
+                   help="Dossier RoBERTa pour l'ensemble TF-IDF+RoBERTa (defaut: models/transformer).")
+    p.add_argument("--no-ensemble", action="store_true",
+                   help="Forcer le baseline TF-IDF seul (desactive l'ensemble).")
     p.set_defaults(func=cmd_predict)
 
     # train-transformer (charge torch a la demande)
@@ -459,6 +473,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model-path", default=str(DEFAULT_MODEL_PATH))
     p.add_argument("--mappings-path", default=str(DEFAULT_MAPPINGS_PATH))
     p.add_argument("--no-structure", action="store_true", help="Ne pas extraire la structure argumentative.")
+    p.add_argument("--transformer-dir", default=str(DEFAULT_TRANSFORMER_DIR),
+                   help="Dossier RoBERTa pour l'ensemble TF-IDF+RoBERTa (defaut: models/transformer).")
+    p.add_argument("--no-ensemble", action="store_true",
+                   help="Forcer le baseline TF-IDF seul (desactive l'ensemble).")
     p.set_defaults(func=cmd_analyze)
 
     # extract (structure argumentative : LLM ou heuristique)
@@ -479,6 +497,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output-json", default="results/corrections_summary.json")
     p.add_argument("--examples", type=int, default=5, help="Nb d'exemples corriges a afficher.")
     p.add_argument("--progress", action="store_true", help="Afficher la progression.")
+    p.add_argument("--transformer-dir", default=str(DEFAULT_TRANSFORMER_DIR),
+                   help="Dossier RoBERTa pour l'ensemble TF-IDF+RoBERTa (defaut: models/transformer).")
+    p.add_argument("--no-ensemble", action="store_true",
+                   help="Forcer le baseline TF-IDF seul (desactive l'ensemble).")
     p.set_defaults(func=cmd_analyze_corrections)
 
     # eval-corpus (corpus AIF annote -> AF de Dung)
