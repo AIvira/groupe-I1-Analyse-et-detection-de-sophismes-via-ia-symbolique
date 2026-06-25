@@ -1,6 +1,6 @@
 """Demo interactive du pipeline neuro-symbolique de detection de sophismes (I1).
 
-Lancer depuis le dossier `groupe-I1/` :
+Lancer depuis le dossier `groupe-I1-Analyse-et-detection-de-sophismes-via-ia-symbolique/` :
 
     streamlit run app.py
 

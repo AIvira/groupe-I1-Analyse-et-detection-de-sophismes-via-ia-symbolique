@@ -339,7 +339,7 @@ critique par prediction) et le **mecanisme d'arbitrage** verifiable.
 - Le mode hybride permet de comparer facilement : `rules` vs `ml` vs `hybrid`.
 - La normalisation du corpus est separee du pipeline pour pouvoir brancher plusieurs datasets sans reecrire le coeur du code.
 - Le dataset `causalNLP/logical-fallacy` expose un champ `masked_articles` sur la partie `edu`; il est conserve dans `masked_text` pour experimenter une representation plus structuree.
-- Le fichier `groupe-I1/data/raw/causalNLP/mappings.csv` sert a enrichir les predictions avec la description et la forme logique associees au label predit.
+- Le fichier `groupe-I1-Analyse-et-detection-de-sophismes-via-ia-symbolique/data/raw/causalNLP/mappings.csv` sert a enrichir les predictions avec la description et la forme logique associees au label predit.
 - Avec ce dataset, la taxonomie `full` doit etre consideree comme la reference. La taxonomie `reduced` est volontairement lossy et sert seulement a un premier benchmark plus simple.
 - La baseline supervisee exploite maintenant :
   - `word n-grams` sur `text`

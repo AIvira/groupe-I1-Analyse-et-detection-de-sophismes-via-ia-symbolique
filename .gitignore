@@ -1,9 +1,0 @@
-# Config locale uniquement (non versionnee a la demande)
-pyproject.toml
-uv.lock
-
-# Environnement / IDE
-.venv/
-.idea/
-__pycache__/
-*.pyc
