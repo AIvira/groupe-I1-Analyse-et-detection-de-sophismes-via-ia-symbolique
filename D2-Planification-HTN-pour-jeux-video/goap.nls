@@ -1,0 +1,119 @@
+
+
+globals [
+  goap-actions
+]
+
+
+
+to setup-goap-actions
+  set goap-actions table:make
+  table:put goap-actions "eat" [x -> goap-eat x]
+  table:put goap-actions "plant-food" [x -> goap-plant-food x]
+  table:put goap-actions "gather-food" [x -> goap-gather-food x]
+  table:put goap-actions "gather-wood" [x -> goap-gather-wood x]
+  table:put goap-actions "gather-stone" [x -> goap-gather-stone x]
+  table:put goap-actions "build-house" [x -> goap-build-house x]
+end
+
+to-report goap-eat [world-state]
+  if table:get world-state "inv-potatoes" > 0 [ 
+    table:put world-state "inv-potatoes" (table:get world-state "inv-potatoes" - 1)
+    report true ]
+  report false
+end
+
+to-report goap-gather-food [world-state]
+  table:put world-state "inv-potatoes" (table:get world-state "inv-potatoes" + ressources-per-gather)
+  report true 
+end
+
+to-report goap-gather-wood [world-state]
+  table:put world-state "inv-wood" (table:get world-state "inv-wood" + ressources-per-gather)
+  report true 
+end
+
+to-report goap-gather-stone [world-state]
+  table:put world-state "inv-stone" (table:get world-state "inv-stone" + ressources-per-gather )
+  report true 
+end
+
+to-report goap-plant-food [world-state]
+  if table:get world-state "inv-potatoes" >= 1 [ 
+    table:put world-state "inv-potatoes" (table:get world-state "inv-potatoes" - 1)
+  ]
+  report true 
+end
+
+
+to-report goap-build-house [world-state]
+  if table:get world-state "inv-stone" >= house-stone-cost  and table:get world-state "inv-wood" >= house-wood-cost [ 
+    table:put world-state "inv-stone" (table:get world-state "inv-stone" - house-stone-cost)
+    table:put world-state "inv-wood" (table:get world-state "inv-wood" - house-wood-cost)
+    report true ]
+  report false
+end
+
+to-report enqueue [queue el]
+  report lput el queue
+end
+
+to-report dequeue [queue]
+  report but-first queue
+end
+
+to-report get-head [queue]
+  report first queue
+end
+
+to-report goap-explore [objective]
+  let world-state table:make
+  
+  table:put world-state "is-hungry?" is-hungry?
+  table:put world-state "inv-stone" inv-stone
+  table:put world-state "inv-wood" inv-wood
+  table:put world-state "inv-potatoes" inv-potatoes
+  
+  if is-hungry? = true [set objective "eat"]
+  
+  let actions [ "eat" "gather-food" "gather-stone" "gather-wood" "build-house" "plant-food" ]
+  
+  let world-state-queue list world-state nobody
+  let actions-queue list [] nobody 
+  
+  let max-depth 3
+  while [max-depth > 0] [
+    ifelse get-head world-state-queue = nobody 
+    [
+      set max-depth max-depth - 1
+      set actions-queue dequeue actions-queue
+      set world-state-queue dequeue world-state-queue
+      
+      set actions-queue enqueue actions-queue nobody
+      set world-state-queue enqueue world-state-queue nobody
+      
+    ]
+    [
+      foreach actions [ action ->
+        
+          let world-state-copy copy-table get-head world-state-queue
+          let valid? (runresult table:get goap-actions action world-state-copy)
+          if valid? = true [
+          if action = objective [
+            report enqueue get-head actions-queue action
+          ]
+            set actions-queue enqueue actions-queue ( enqueue get-head actions-queue action )
+            set world-state-queue enqueue world-state-queue world-state-copy
+          ]
+
+      ]
+      set actions-queue dequeue actions-queue
+      set world-state-queue dequeue world-state-queue
+    ]
+    
+  ]
+  if objective = "build-house" [
+    report goap-explore one-of [ "gather-stone" "gather-wood" "gather-wood" ] ]
+  report []
+  
+end

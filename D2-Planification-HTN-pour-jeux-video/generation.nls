@@ -1,0 +1,170 @@
+breed [trees tree]
+
+to-report stone_chance_increase
+  report 40
+end
+
+to-report wood_chance_increase
+  report 40
+end
+
+to-report water_chance_increase
+  report 80
+end
+
+to-report grass_chance_base
+  report 90
+end
+
+to-report stone_chance_base
+  report 8
+end
+
+to-report wood_chance_base
+  report 8
+end
+
+to-report water_chance_base
+  report 2
+end
+
+to respawn-ressources
+  if any? patches with [stone?] = false 
+  [
+    ask n-of 10 patches with [ grass? = true and count turtles-here = 1 ]
+    [
+      set pcolor grey
+      set stone? true
+      set grass? false
+    ]
+  ]
+  
+  if any? patches with [wood?] = false
+  [
+    ask n-of 10 patches with [ grass? = true and count turtles-here = 1]
+    [ set pcolor green
+      sprout-trees 1 [ set shape "tree" 
+        set color green - 2 ]
+      set wood? true
+      set grass? false ]
+  ]
+  
+end
+
+
+to initial-generation
+  ask patches [
+    set grass?     true
+    set stone?    false
+    set wood? false
+    set water? false
+    set fertile? false
+    set pcolor    green
+  ]
+  
+  let x -20
+  let y -20
+  
+  let stone_chance stone_chance_base
+  let grass_chance grass_chance_base
+  let wood_chance wood_chance_base
+  let water_chance water_chance_base
+  repeat 41 [ 
+    
+    set y -20
+    repeat 41 [
+      
+      set stone_chance stone_chance_base
+      set grass_chance grass_chance_base
+      set wood_chance wood_chance_base
+      set water_chance water_chance_base
+      ask patches with [
+        pxcor = x and
+        pycor = y ]
+      [
+        if [stone?] of patch x (y - 1) = true [
+          set stone_chance  stone_chance + stone_chance_increase
+        ]
+        if [wood?] of patch x (y - 1) = true [
+          set wood_chance  wood_chance + wood_chance_increase
+        ]
+        if [water?] of patch x (y - 1) = true [
+          set water_chance  water_chance + water_chance_increase
+        ]
+        
+        if [stone?] of patch (x - 1) y = true [
+          set stone_chance  stone_chance + stone_chance_increase
+        ]
+        if [wood?] of patch (x - 1) y = true [
+          set wood_chance  wood_chance + wood_chance_increase
+        ]
+        if [water?] of patch (x - 1) y = true [
+          set water_chance  water_chance + water_chance_increase
+        ]
+        
+        
+        ifelse random (stone_chance + grass_chance + wood_chance + water_chance) < stone_chance
+        [ set pcolor grey
+          set stone? true
+          set grass? false ]
+        [
+          ifelse random (grass_chance + wood_chance + water_chance) < wood_chance
+          [ set pcolor green
+            sprout-trees 1 [ set shape "tree" 
+              set color green - 2 ]
+            set wood? true
+            set grass? false ]
+          [          
+            if random (grass_chance + water_chance) < water_chance
+            [ set pcolor cyan
+              set water? true
+              set grass? false ]
+          ]
+        ]
+        
+      ]
+      set y (y + 1) 
+    ]
+    set x (x + 1)
+  ]
+  
+end
+
+to clean-up-orphelin
+  ask patches with [ 
+    water? = true ][
+    if count neighbors with [water? = true ] < 2 [
+      set water? false
+      set grass? true
+      set pcolor green
+    ]
+  ]
+  
+  ask patches with [ 
+    wood? = true ][
+    if count neighbors with [wood? = true ] < 2 [
+      set wood? false
+      set grass? true
+      set pcolor green
+      ask turtles-here [ die ]
+    ]
+  ]
+  
+  ask patches with [ 
+    stone? = true ][
+    if count neighbors with [stone? = true ] < 2  [
+      set stone? false
+      set grass? true
+      set pcolor green
+    ]
+  ]
+end
+
+to set-fertile
+  ask patches with [ 
+    grass? = true ][
+    if count neighbors with [water? = true ] > 0 [
+      set fertile? true
+    ]
+  ]
+end

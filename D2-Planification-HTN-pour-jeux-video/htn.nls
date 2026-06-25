@@ -1,0 +1,219 @@
+extensions [table]
+
+globals [
+  functions
+]
+
+to-report copy-table [ orig ]
+  let copy table:make
+  foreach ( table:keys orig ) [
+    [key] -> table:put copy key ( table:get orig key )
+  ]
+  report copy
+end
+
+to copy-table-into [ orig dest ]
+  table:clear dest
+  foreach ( table:keys orig ) [
+    [key] -> table:put dest key ( table:get orig key )
+  ]
+end
+
+to setup-functions
+  set functions table:make
+  table:put functions "eat" [-> eat]
+  table:put functions "gather-food" [-> gather-food]
+  table:put functions "gather-wood" [-> gather-wood]
+  table:put functions "gather-stone" [-> gather-stone]
+  table:put functions "build-house" [-> build-house]
+  table:put functions "plant-food" [-> plant-food]
+end
+
+to-report compound-root [objective]
+  let world-state table:make
+  
+  table:put world-state "is-hungry?" is-hungry?
+  table:put world-state "inv-stone" inv-stone
+  table:put world-state "inv-wood" inv-wood
+  table:put world-state "inv-potatoes" inv-potatoes
+  
+  let world-state-copy copy-table world-state
+  let result-plan compound-manage-hunger world-state-copy
+  
+  if result-plan != [] [
+    report result-plan
+  ]
+  
+  set world-state-copy copy-table world-state
+  ifelse objective = "build-house" [
+  set result-plan compound-build-house world-state-copy
+  ]
+  [ set result-plan compound-plant-food world-state-copy]
+  
+  if result-plan != [] [
+    report result-plan
+  ]
+  
+  show "Could not find plan !"
+  report []
+  
+end
+
+to-report compound-plant-food [world-state]
+  
+  let world-state-copy copy-table world-state
+  let success? primitive-plant-food world-state-copy
+  
+  if success? = true [
+    copy-table-into world-state-copy world-state
+    report ["plant-food"]
+  ]
+  
+  set world-state-copy copy-table world-state
+  set success? primitive-gather-food world-state-copy
+  
+  if success? = false [
+    report []
+  ]
+  
+  set world-state-copy copy-table world-state
+  set success? primitive-plant-food world-state-copy
+  
+  if success? = true [
+    copy-table-into world-state-copy world-state
+    report ["gather-food" "plant-food"]
+  ]
+  
+  report []
+end
+
+to-report compound-manage-hunger [world-state]
+  if table:get world-state "is-hungry?" = false [report []]
+  
+  let world-state-copy copy-table world-state
+  let success? primitive-eat world-state-copy
+  
+  if success? = true [
+    copy-table-into world-state-copy world-state
+    report ["eat"]
+  ]
+  
+  set world-state-copy copy-table world-state
+  let result-plan method-gather-food world-state-copy
+  
+  if result-plan != [] [
+    copy-table-into world-state-copy world-state
+    report result-plan
+  ]
+  
+  report []
+end
+
+to-report primitive-eat [world-state]
+  ifelse table:get world-state "inv-potatoes" > 0 [
+    table:put world-state "inv-potatoes" (table:get world-state "inv-potatoes" - 1)
+    report true
+  ] [
+    report false
+  ]
+end
+
+to-report primitive-plant-food [world-state]
+  ifelse table:get world-state "inv-potatoes" > 0 [
+    table:put world-state "inv-potatoes" (table:get world-state "inv-potatoes" - 1)
+    report true
+  ] [
+    report false
+  ]
+end
+
+to-report method-gather-food [world-state]
+  let world-state-copy copy-table world-state
+  
+  let success? primitive-gather-food world-state-copy
+  if success? = false [report []]
+  
+  set success? primitive-eat world-state-copy
+  if success? = false [report []]
+  
+  copy-table-into world-state-copy world-state
+  report ["gather-food" "eat"]
+end
+
+to-report primitive-gather-food [world-state]
+  table:put world-state "inv-potatoes" (table:get world-state "inv-potatoes" + ressources-per-gather)
+  report true
+end
+
+
+
+
+
+;; HOUSE BUILDING
+to-report compound-build-house [world-state]
+  
+  let world-state-copy copy-table world-state
+  let success? primitive-build-house world-state-copy
+  
+  if success? = true [
+    copy-table-into world-state-copy world-state
+    report ["build-house"]
+  ]
+  
+  set world-state-copy copy-table world-state
+  let result-plan method-gather-house-materials world-state-copy
+  
+  if result-plan != [] [
+    copy-table-into world-state-copy world-state
+    report result-plan
+  ]
+  
+  report []
+end
+
+to-report primitive-build-house [world-state]
+  ifelse table:get world-state "inv-stone" >= house-stone-cost and table:get world-state "inv-wood" >= house-wood-cost [
+    table:put world-state "inv-stone" (table:get world-state "inv-stone" - house-stone-cost)
+    table:put world-state "inv-wood" (table:get world-state "inv-wood" - house-wood-cost)
+    report true
+  ] [
+    report false
+  ]
+end
+
+to-report method-gather-house-materials [world-state]
+  let world-state-copy copy-table world-state
+  
+  let tmp-plan []
+  let success? false
+  
+  while [ table:get world-state-copy "inv-stone" < house-stone-cost ]
+  [
+    set success? primitive-gather-stone world-state-copy
+    if success? = false [report []]
+    set tmp-plan lput "gather-stone" tmp-plan
+  ]
+  
+  while [ table:get world-state-copy "inv-wood" < house-wood-cost ]
+  [
+    set success? primitive-gather-wood world-state-copy
+    if success? = false [report []]
+    set tmp-plan lput "gather-wood" tmp-plan
+  ]
+  
+  set success? primitive-build-house world-state-copy
+  if success? = false [report []]
+  
+  copy-table-into world-state-copy world-state
+  report lput "build-house" tmp-plan
+end
+
+to-report primitive-gather-stone [world-state]
+  table:put world-state "inv-stone" (table:get world-state "inv-stone" + ressources-per-gather)
+  report true
+end
+
+to-report primitive-gather-wood [world-state]
+  table:put world-state "inv-wood" (table:get world-state "inv-wood" + ressources-per-gather)
+  report true
+end

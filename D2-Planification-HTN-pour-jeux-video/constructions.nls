@@ -1,0 +1,43 @@
+breed [potato-plants potato-plant]
+breed [houses house]
+
+potato-plants-own
+[
+  current-growth
+]
+
+to-report max-growth
+  report 100
+end
+
+to-report starting-potato-plants
+  report 50
+end
+
+
+to setup-potato-plants
+  create-potato-plants starting-potato-plants [
+    set current-growth max-growth
+    set shape "potato plant"
+    set color green - 2
+    move-to one-of patches with [fertile? = true and count turtles-here = 0]
+  ]
+end
+
+to update-potato-plants
+  ask potato-plants [
+  if current-growth < max-growth [
+    set current-growth current-growth + 1
+  ]]
+end
+
+
+;; HOUSE
+
+to-report house-stone-cost
+  report 30
+end
+
+to-report house-wood-cost
+  report 50
+end

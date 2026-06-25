@@ -1,0 +1,21 @@
+breed [locations location]
+
+extensions [nw]
+
+to setup-links
+  ask patches with [water? = false] [
+    sprout-locations 1 [hide-turtle]
+  ]
+  ask locations [
+    create-links-with locations-on neighbors4 [hide-link]
+  ]
+end
+
+to-report pathfind-from-to [x1 y1 x2 y2]
+  let path-start one-of (locations-on patch x1 y1)
+  let path-end one-of (locations-on patch x2 y2)
+  
+  report [
+    nw:turtles-on-path-to path-end
+  ] of path-start
+end

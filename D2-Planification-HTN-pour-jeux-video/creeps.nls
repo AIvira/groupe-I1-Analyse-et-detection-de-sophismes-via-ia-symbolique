@@ -1,0 +1,376 @@
+breed [creeps creep]
+
+creeps-own
+[
+  inv-stone
+  inv-wood
+  inv-potatoes
+  hunger
+  is-hungry?
+  path
+  plan
+  plan-data
+  mission
+]
+
+to-report max-speed
+  report 1
+end
+
+to-report max-hunger
+  report 100
+end
+
+to-report max-ressources
+  report 3000
+end
+
+to-report ressources-per-gather
+  report 10
+end
+
+to-report starting-creeps
+  report 1
+end
+
+to-report potato-plant-cost
+  report [0 0 1]
+end
+
+to-report potato-hunger
+  report 30
+end
+
+to setup-creeps
+  create-creeps starting-creeps [
+    set inv-stone 0
+    set inv-wood 0
+    set inv-potatoes 0
+    set hunger max-hunger
+    set is-hungry? false
+    set path []
+    set plan []
+    set mission "build-house"
+    
+    set plan-data table:make
+    reset-data
+    
+    set shape "person"
+    set color red
+    move-to one-of patches with [water? = false]
+    
+    hatch-houses 1 [
+    set shape "house"
+    set color brown + 1
+    move-to myself
+  ]
+  ]
+end
+
+to update-hunger
+  ifelse hunger > 0 [
+    set hunger (hunger - 1)
+    if hunger < 30 [set is-hungry? true]
+    if hunger > 70 [set is-hungry? false]
+  ] [
+    die
+  ]
+end
+
+to update-creeps
+  ask creeps [
+    let old-hunger? is-hungry?
+    update-hunger
+    ;;show ( word "Hunger :"  hunger  " Potatoes :" inv-potatoes " Plan :"  plan " Wood: " inv-wood " Stone: " inv-stone plan-data)
+    
+    if old-hunger? != is-hungry? and is-hungry? = true [ 
+      set plan [] 
+      reset-data
+    ]
+    ifelse plan = [][
+      ifelse ai-system = "htn" [set plan compound-root mission] [
+        set plan goap-explore mission]
+    ] [
+      let ended? runresult table:get functions (first plan)
+      if ended? = true [
+        set plan but-first plan
+      ]
+    ]
+  ]
+end
+
+to move
+  if not empty? path [
+    let next item 0 path
+    
+    setxy ([xcor] of next) ([ycor] of next)
+    
+    set path (but-first path)
+  ]
+end
+
+to movexy [x y]
+  set path pathfind-from-to xcor ycor x y
+  
+  if path = false [
+    set path []
+    stop
+  ]
+  
+  set path but-first path
+end
+
+
+to reset-data
+  table:put plan-data "gather-food" 0
+  table:put plan-data "gather-stone" 0
+  table:put plan-data "gather-wood" 0
+  table:put plan-data "build-house" 0
+  table:put plan-data "plant-food" 0
+end
+
+to-report build-house
+  let data table:get plan-data "build-house"
+  
+  if data = 0 [
+    let target min-one-of patches with [grass? = true] [distance myself]
+    
+    if target = nobody [
+      table:put plan-data "build-house" 0
+      report true
+    ]
+    movexy ([pxcor] of target) ([pycor] of target)
+  ]
+  
+  if path = [] [
+    let ended build-house-on-position
+    table:put plan-data "build-house" 0
+    report true
+  ]
+  
+  move
+  
+  table:put plan-data "build-house" (data + 1)
+  report false
+end
+
+to-report gather-wood
+  let data table:get plan-data "gather-wood"
+  
+  if data = 0 [
+    let target min-one-of patches with [wood? = true] [distance myself]
+    
+    if target = nobody [
+      table:put plan-data "gather-wood" 0
+      report true
+    ]
+    movexy ([pxcor] of target) ([pycor] of target)
+  ]
+  
+  if path = [] [
+    let ended gather
+    table:put plan-data "gather-wood" 0
+    report true
+  ]
+  
+  move
+  
+  table:put plan-data "gather-wood" (data + 1)
+  report false
+end
+
+to-report gather-stone
+  let data table:get plan-data "gather-stone"
+  
+  if data = 0 [
+    let target min-one-of patches with [stone? = true] [distance myself]
+    
+    if target = nobody [
+      table:put plan-data "gather-stone" 0
+      report true
+    ]
+    movexy ([pxcor] of target) ([pycor] of target)
+  ]
+  
+  if path = [] [
+    let ended gather
+    table:put plan-data "gather-stone" 0
+    report true
+  ]
+  
+  move
+  
+  table:put plan-data "gather-stone" (data + 1)
+  report false
+end
+
+to-report gather-food
+  let data table:get plan-data "gather-food"
+  
+  if data = 0 [
+    let target min-one-of potato-plants [distance myself]
+    
+    if target = nobody [
+      table:put plan-data "gather-food" 0
+      report true
+    ]
+    movexy ([xcor] of target) ([ycor] of target)
+  ]
+  
+  if path = [] [
+    let ended gather
+    table:put plan-data "gather-food" 0
+    report true
+  ]
+  
+  move
+  
+  table:put plan-data "gather-food" (data + 1)
+  report false
+end
+
+to-report build-house-on-position
+  ;; need to change
+  show "BUILT-HOUSE" 
+  
+  hatch-houses 1 [
+    set shape "house"
+    set color brown + 1
+    move-to myself
+  ]
+  
+  set inv-wood inv-wood - house-wood-cost
+  set inv-stone inv-stone - house-stone-cost
+  
+  hatch-creeps 1 [
+    set inv-stone 0
+    set inv-wood 0
+    set inv-potatoes 0
+    set hunger max-hunger
+    set is-hungry? false
+    set path []
+    set plan []
+    set mission one-of ["build-house" "plant-food"]
+    
+    set plan-data table:make
+    reset-data
+    
+    set shape "person"
+    set color red
+    move-to myself
+  ]
+  
+  report true
+end
+
+to-report gather
+  (ifelse
+    ([stone?] of patch-here) [
+      show "Found stone !"
+      take-stone
+      ask patch-here [
+        set stone? false
+        set grass? true
+        set pcolor green
+      ]
+    ]
+    ([wood?] of patch-here) [
+      show "Found wood !"
+      take-wood
+      ask patch-here [
+        set wood? false
+        set grass? true
+        set pcolor green
+        ask trees-here [die]
+      ]
+    ]
+    (any? potato-plants-here) [
+      show "Found potato plant !"
+      take-potatoes
+      ask potato-plants-here [die]
+    ] []
+  )
+  report true
+end
+
+to-report eat
+  if inv-potatoes > 0 [
+    set inv-potatoes inv-potatoes - 1
+    set hunger hunger + potato-hunger
+  ]
+  report true
+end
+
+to take-stone
+  set inv-stone (inv-stone + min list remaining-space ressources-per-gather)
+end
+
+to take-wood
+  set inv-wood (inv-wood + min list remaining-space ressources-per-gather)
+end
+
+to take-potatoes
+  set inv-potatoes (inv-potatoes + min list remaining-space ressources-per-gather)
+end
+
+to-report can-gather
+  (ifelse
+    ([stone?] of patch-here) [report true]
+    ([wood?] of patch-here) [report true]
+    (any? potato-plants-here) [report true]
+    [report false]
+  )
+end
+
+to-report check-ressources [cost]
+  report (
+    (item 0 cost <= inv-stone)
+    and (item 1 cost <= inv-wood)
+    and (item 2 cost <= inv-potatoes)
+  )
+end
+
+to-report remaining-space
+  report max-ressources - (inv-stone + inv-wood + inv-potatoes)
+end
+
+
+to-report plant-food
+  let data table:get plan-data "plant-food"
+  
+  if data = 0 [
+    let target min-one-of patches with [fertile? = true and count turtles-here = 1] [distance myself]
+    
+    if target = nobody [
+      table:put plan-data "plant-food" 0
+      report true
+    ]
+    movexy ([pxcor] of target) ([pycor] of target)
+  ]
+  
+  if path = [] [
+    let ended plant-food-on-position
+    table:put plan-data "plant-food" 0
+    report true
+  ]
+  
+  move
+  
+  table:put plan-data "plant-food" (data + 1)
+  report false
+end
+
+to-report plant-food-on-position
+  ;; need to change
+  show "Planted Potato !!!" 
+  
+  hatch-potato-plants 1 [
+    set current-growth 0
+    set shape "potato plant"
+    set color green - 2
+    move-to myself
+  ]
+  
+  set inv-potatoes inv-potatoes - 1
+  report true
+end
